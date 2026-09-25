@@ -46,3 +46,9 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Firebase backend dependencies and local emulator files
+/functions/node_modules/
+.firebase/
+*-debug.log
+

@@ -1,192 +1,72 @@
 import 'package:flutter/material.dart';
-import 'dummy_data.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:cloud_functions/cloud_functions.dart';
+import 'package:firebase_storage/firebase_storage.dart';
 
-void main() {
+import 'firebase_options.dart';
+
+import 'src/app.dart';
+export 'src/app.dart' show HarvestHubApp;
+
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const HarvestHubApp());
+  runApp(const _Bootstrap());
 }
 
-class HarvestHubApp extends StatelessWidget {
-  const HarvestHubApp({super.key});
-
+class _Bootstrap extends StatefulWidget {
+  const _Bootstrap();
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'HarvestHub',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: const Color(0xFF2E7D32),
-          brightness: Brightness.light,
-        ),
-        useMaterial3: true,
-      ),
-      home: const HarvestHubHomePage(),
-    );
-  }
+  State<_Bootstrap> createState() => _BootstrapState();
 }
 
-class HarvestHubHomePage extends StatelessWidget {
-  const HarvestHubHomePage({super.key});
+class _BootstrapState extends State<_Bootstrap> {
+  late Future<void> ready = initialize();
+  Future<void> initialize() async {
+    const host = String.fromEnvironment('FIREBASE_EMULATOR_HOST');
+    if (Firebase.apps.isEmpty) {
+      await Firebase.initializeApp(
+        options: host.isEmpty ? DefaultFirebaseOptions.currentPlatform : const FirebaseOptions(
+          apiKey: 'emulator-only-key', appId: '1:123456789:web:harvesthub', messagingSenderId: '123456789',
+          projectId: 'demo-harvesthub', storageBucket: 'demo-harvesthub.appspot.com',
+        ),
+      );
+    }
+    if (host.isNotEmpty) {
+      await FirebaseAuth.instance.useAuthEmulator(host, 9099);
+      FirebaseFirestore.instance.useFirestoreEmulator(host, 8080);
+      FirebaseFunctions.instance.useFunctionsEmulator(host, 5001);
+      await FirebaseStorage.instance.useStorageEmulator(host, 9199);
+    }
+  }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.eco, color: Colors.green),
-            SizedBox(width: 8),
-            Text(
-              'HarvestHub',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
+  Widget build(BuildContext context) => FutureBuilder<void>(
+    future: ready,
+    builder: (context, snapshot) {
+      if (snapshot.connectionState == ConnectionState.done &&
+          !snapshot.hasError) {
+        return const HarvestHubApp();
+      }
+      return MaterialApp(
+        home: Scaffold(
+          body: Center(
+            child: snapshot.hasError
+                ? Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('Unable to initialize HarvestHub.'),
+                      TextButton(
+                        onPressed: () => setState(() => ready = initialize()),
+                        child: const Text('Retry'),
+                      ),
+                    ],
+                  )
+                : const CircularProgressIndicator(),
+          ),
         ),
-        backgroundColor: Colors.green.shade50,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              color: Colors.green.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.green, size: 28),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'HarvestHub Workspace',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Project ID: ${HarvestHubDummyData.projectId}',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Status:',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade700,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            'Ready for work',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            const Text(
-              'Sample Crop Inventory (Dummy Data)',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'This dummy data is prepared for syncing with your Firebase project.',
-              style: TextStyle(color: Colors.black54, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: HarvestHubDummyData.dummyCrops.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final crop = HarvestHubDummyData.dummyCrops[index];
-                return Card(
-                  elevation: 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.green.shade100,
-                      child: const Icon(Icons.agriculture, color: Colors.green),
-                    ),
-                    title: Text(
-                      crop['name'] as String,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(
-                      'Category: ${crop['category']} • Quantity: ${crop['quantity']}',
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          crop['pricePerKg'] as String,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          crop['status'] as String,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+      );
+    },
+  );
 }
