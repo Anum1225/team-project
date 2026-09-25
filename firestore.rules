@@ -1,0 +1,59 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owner(uid) { return request.auth != null && request.auth.uid == uid; }
+    function customer(uid) {
+      return owner(uid) && get(/databases/$(database)/documents/users/$(uid)).data.role == 'customer';
+    }
+    function profile(data) {
+      return data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && data.email == request.auth.token.email
+        && data.phone is string && data.phone.size() >= 7 && data.phone.size() <= 30
+        && data.address is string && data.address.size() >= 12 && data.address.size() <= 500;
+    }
+    match /users/{uid} {
+      allow read: if owner(uid);
+      allow create: if owner(uid) && profile(request.resource.data)
+        && request.resource.data.keys().hasOnly(['name', 'email', 'phone', 'address', 'role', 'createdAt'])
+        && request.resource.data.role == 'customer' && request.resource.data.createdAt == request.time;
+      allow update: if customer(uid) && profile(request.resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'email', 'phone', 'address']);
+      match /private/preferences {
+        allow read: if customer(uid);
+        allow create, update: if customer(uid)
+          && request.resource.data.keys().hasOnly(['wishlist', 'followed', 'cart'])
+          && request.resource.data.wishlist is list && request.resource.data.wishlist.size() <= 100
+          && request.resource.data.followed is list && request.resource.data.followed.size() <= 100
+          && request.resource.data.cart is map && request.resource.data.cart.size() <= 100;
+      }
+      match /orders/{orderId} {
+        allow read: if customer(uid);
+        // These are simulated purchases from the bundled sample catalog, without payment.
+        allow create: if customer(uid)
+          && request.resource.data.keys().hasOnly(['id','date','address','pickups','status','total','simulated','lines','customerId','createdAt'])
+          && request.resource.data.id == orderId && request.resource.data.customerId == uid
+          && request.resource.data.simulated == true && request.resource.data.status == 'Pending'
+          && request.resource.data.createdAt == request.time
+          && request.resource.data.date is string
+          && request.resource.data.address is string && request.resource.data.address.size() >= 12
+          && request.resource.data.address.size() <= 500
+          && request.resource.data.lines is list && request.resource.data.lines.size() > 0 && request.resource.data.lines.size() <= 100
+          && request.resource.data.pickups is map && request.resource.data.pickups.size() <= 100
+          && request.resource.data.total is int && request.resource.data.total >= 0;
+        allow update: if customer(uid) && !(resource.data.status in ['Completed', 'Cancelled'])
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['pickups'])
+          && request.resource.data.pickups is map && request.resource.data.pickups.size() <= 100;
+      }
+      match /feedback/{feedbackId} {
+        allow read: if customer(uid);
+        allow create: if customer(uid)
+          && request.resource.data.keys().hasOnly(['name','email','subject','message','createdAt'])
+          && request.resource.data.name is string && request.resource.data.name.size() <= 100
+          && request.resource.data.email is string && request.resource.data.email.size() <= 254
+          && request.resource.data.subject in ['General question','Order help','Pickup help','Feedback']
+          && request.resource.data.message is string && request.resource.data.message.size() >= 10
+          && request.resource.data.message.size() <= 2000 && request.resource.data.createdAt == request.time;
+      }
+    }
+  }
+}

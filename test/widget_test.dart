@@ -6,11 +6,34 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:untitled/customer/app.dart';
-import 'package:untitled/customer/store.dart';
-import 'package:untitled/customer/ui.dart';
-import 'package:untitled/customer/catalog.dart';
-import 'package:untitled/customer/shopping.dart';
-import 'package:untitled/customer/account.dart';
+import 'package:untitled/customer/data/pickup_slots.dart';
+import 'package:untitled/customer/data/sample_catalog.dart';
+import 'package:untitled/customer/models/customer_session.dart';
+import 'package:untitled/customer/screens/about_screen.dart';
+import 'package:untitled/customer/screens/assistant_screen.dart';
+import 'package:untitled/customer/screens/cart_screen.dart';
+import 'package:untitled/customer/screens/catalog_screen.dart';
+import 'package:untitled/customer/screens/checkout_screen.dart';
+import 'package:untitled/customer/screens/contact_screen.dart';
+import 'package:untitled/customer/screens/customer_shell.dart';
+import 'package:untitled/customer/screens/edit_profile_screen.dart';
+import 'package:untitled/customer/screens/farmer_screen.dart';
+import 'package:untitled/customer/screens/farmers_screen.dart';
+import 'package:untitled/customer/screens/notifications_screen.dart';
+import 'package:untitled/customer/screens/order_screen.dart';
+import 'package:untitled/customer/screens/orders_screen.dart';
+import 'package:untitled/customer/screens/password_screen.dart';
+import 'package:untitled/customer/screens/pickup_screen.dart';
+import 'package:untitled/customer/screens/product_screen.dart';
+import 'package:untitled/customer/screens/profile_screen.dart';
+import 'package:untitled/customer/screens/register_screen.dart';
+import 'package:untitled/customer/screens/reset_password_screen.dart';
+import 'package:untitled/customer/screens/sign_in_screen.dart';
+import 'package:untitled/customer/screens/success_screen.dart';
+import 'package:untitled/customer/screens/welcome_screen.dart';
+import 'package:untitled/customer/screens/wishlist_screen.dart';
+import 'package:untitled/customer/state/customer_store.dart';
+import 'package:untitled/customer/theme/customer_theme.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +47,7 @@ void main() {
     )..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'))).load();
   });
   test('Cart enforces stock and checkout snapshots order lines', () {
-    final store = CustomerStore();
+    final store = CustomerStore(CustomerSession.customer);
     expect(store.add(products[6]), false);
     expect(store.add(products.first, 25), false);
     expect(store.add(products.first, 2), true);
@@ -56,7 +79,7 @@ void main() {
     await tester.ensureVisible(find.text('Explore customer demo'));
     await tester.tap(find.text('Explore customer demo'));
     await tester.pumpAndSettle();
-    expect(find.text('Fresh finds, Alex.'), findsOneWidget);
+    expect(find.text('Fresh finds, just for you.'), findsOneWidget);
     expect(find.text('Admin'), findsNothing);
     expect(find.text('Farmer dashboard'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -92,7 +115,8 @@ void main() {
   testWidgets('Checkout validates pickup before showing order confirmation', (
     tester,
   ) async {
-    final store = CustomerStore()..add(products.first, 2);
+    final store = CustomerStore(CustomerSession.customer)
+      ..add(products.first, 2);
     await tester.pumpWidget(
       MaterialApp(
         theme: customerTheme(),
@@ -137,7 +161,8 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final store = CustomerStore()..add(products.first);
+      final store = CustomerStore(CustomerSession.customer)
+        ..add(products.first);
       final order = store.checkout('12 Garden Street, Karachi', {
         'green': pickupSlots().first,
       })!;
@@ -146,9 +171,9 @@ void main() {
       store.toggleFollow('green');
       final screens = <Widget>[
         WelcomeScreen(store: store),
-        AuthScreen(store: store),
-        AuthScreen(store: store, mode: 'Create account'),
-        AuthScreen(store: store, mode: 'Reset password'),
+        SignInScreen(store: store),
+        RegisterScreen(store: store),
+        ResetPasswordScreen(store: store),
         CustomerShell(store: store),
         Scaffold(body: CatalogScreen(store: store)),
         ProductScreen(product: products.first, store: store),
@@ -168,7 +193,7 @@ void main() {
         FarmerScreen(farmer: farmers.first, store: store),
         Scaffold(body: ProfileScreen(store: store)),
         EditProfileScreen(store: store),
-        const PasswordScreen(),
+        PasswordScreen(store: store),
         NotificationsScreen(store: store),
         AssistantScreen(store: store),
         const AboutScreen(),

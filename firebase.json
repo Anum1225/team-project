@@ -1,1 +1,28 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"harvesthub-80047","appId":"1:245593839221:android:6bada740f650c6cdbd8a3c","fileOutput":"android/app/google-services.json"}},"dart":{"lib/firebase_options.dart":{"projectId":"harvesthub-80047","configurations":{"android":"1:245593839221:android:6bada740f650c6cdbd8a3c","ios":"1:245593839221:ios:8eb100043913c244bd8a3c","macos":"1:245593839221:ios:8eb100043913c244bd8a3c","web":"1:245593839221:web:e4d8f0b87c64e158bd8a3c","windows":"1:245593839221:web:866f486067982fcdbd8a3c"}}}}}}
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "harvesthub-80047",
+          "appId": "1:245593839221:android:6bada740f650c6cdbd8a3c",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "harvesthub-80047",
+          "configurations": {
+            "android": "1:245593839221:android:6bada740f650c6cdbd8a3c",
+            "ios": "1:245593839221:ios:8eb100043913c244bd8a3c",
+            "macos": "1:245593839221:ios:8eb100043913c244bd8a3c",
+            "web": "1:245593839221:web:e4d8f0b87c64e158bd8a3c",
+            "windows": "1:245593839221:web:866f486067982fcdbd8a3c"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "rules": "firestore.rules"
+  }
+}
