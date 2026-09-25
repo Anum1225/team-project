@@ -1,0 +1,150 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ==========================================
+    // HELPER FUNCTIONS
+    // ==========================================
+
+    // Check if the request is from an authenticated user
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Check if the authenticated user matches the specified userId
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    // Get current user profile data
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check if user is a Customer
+    function isCustomer() {
+      return isAuthenticated() && (
+        (request.auth.token.keys().hasAny(['role']) && request.auth.token.role == 'Customer') ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && getUserData().role == 'Customer')
+      );
+    }
+
+    // ==========================================
+    // USERS COLLECTION & SUBCOLLECTIONS
+    // ==========================================
+
+    match /users/{userId} {
+      // Any authenticated user can read profiles (e.g. for basic display),
+      // but only the owner can create or update their own profile.
+      allow read: if isAuthenticated();
+
+      // Customer can create their own profile with role = 'Customer'
+      allow create: if isOwner(userId) &&
+                       (request.resource.data.role == 'Customer' || request.resource.data.Role == 'Customer');
+
+      // Customer can update their profile information (name, phone, address),
+      // but CANNOT escalate their role to Farmer or Administrator.
+      allow update: if isOwner(userId) &&
+                       request.resource.data.role == resource.data.role;
+
+      // Profiles cannot be deleted directly by clients
+      allow delete: if false;
+
+      // ----------------------------------------
+      // Shopping Cart Subcollection
+      // users/{userId}/cart/{productId}
+      // ----------------------------------------
+      match /cart/{productId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // ----------------------------------------
+      // Wishlist Subcollection
+      // users/{userId}/wishlist/{productId}
+      // ----------------------------------------
+      match /wishlist/{productId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // ----------------------------------------
+      // Favorite Farmers Subcollection
+      // users/{userId}/favoriteFarmers/{farmerId}
+      // ----------------------------------------
+      match /favoriteFarmers/{farmerId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // ==========================================
+    // PRODUCTS COLLECTION (Read-only for Customer)
+    // ==========================================
+
+    match /products/{productId} {
+      // Customers and guests can read product listings
+      allow read: if true;
+
+      // Customers can ONLY update stock during transactional checkout (stock decrease)
+      // or farmers/admins can update product inventory
+      allow update: if isAuthenticated() &&
+                       request.resource.data.stockQty <= resource.data.stockQty;
+
+      // Customers CANNOT create or delete products (Farmer/Admin only)
+      allow create, delete: if false;
+    }
+
+    // ==========================================
+    // CATEGORIES COLLECTION (Read-only for Customer)
+    // ==========================================
+
+    match /categories/{categoryId} {
+      allow read: if true;
+      allow write: if false; // Admin only
+    }
+
+    // ==========================================
+    // FARMERS & MARKETS COLLECTIONS (Read-only for Customer)
+    // ==========================================
+
+    match /farmers/{farmerId} {
+      allow read: if true;
+      allow write: if false; // Farmer/Admin only
+    }
+
+    match /farmers_market/{marketId} {
+      allow read: if true;
+      allow write: if false; // Admin only
+    }
+
+    // ==========================================
+    // ORDERS COLLECTION
+    // ==========================================
+
+    match /orders/{orderId} {
+      // Customers can only read orders where they are the customer
+      allow read: if isAuthenticated() && (
+        resource.data.customerId == request.auth.uid ||
+        resource.data.Customer_Id == request.auth.uid
+      );
+
+      // Customers can create an order for themselves with Pending status
+      allow create: if isAuthenticated() &&
+                       (request.resource.data.customerId == request.auth.uid ||
+                        request.resource.data.Customer_Id == request.auth.uid) &&
+                       (request.resource.data.status == 'Pending' ||
+                        request.resource.data.Status == 'Pending');
+
+      // Customers can only update an order to 'Cancelled' if it is currently 'Pending'
+      allow update: if isAuthenticated() &&
+                       (resource.data.customerId == request.auth.uid ||
+                        resource.data.Customer_Id == request.auth.uid) &&
+                       (resource.data.status == 'Pending' ||
+                        resource.data.Status == 'Pending') &&
+                       (request.resource.data.status == 'Cancelled' ||
+                        request.resource.data.Status == 'Cancelled');
+
+      // Orders cannot be deleted
+      allow delete: if false;
+    }
+  }
+}

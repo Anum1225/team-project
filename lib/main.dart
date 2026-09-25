@@ -1,8 +1,19 @@
 import 'package:flutter/material.dart';
-import 'dummy_data.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
-void main() {
+import 'firebase_options.dart';
+import 'screens/login_screen.dart';
+import 'screens/home_screen.dart';
+
+/// HarvestHub - Customer/User App Entry Point
+///
+/// Initializes Firebase and routes to:
+/// - [HomeScreen] if a customer is already logged in.
+/// - [LoginScreen] if no user is authenticated.
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
   runApp(const HarvestHubApp());
 }
 
@@ -20,173 +31,65 @@ class HarvestHubApp extends StatelessWidget {
           brightness: Brightness.light,
         ),
         useMaterial3: true,
+        inputDecorationTheme: InputDecorationTheme(
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       ),
-      home: const HarvestHubHomePage(),
+      // Use Firebase auth state to decide initial screen
+      home: const AuthGate(),
     );
   }
 }
 
-class HarvestHubHomePage extends StatelessWidget {
-  const HarvestHubHomePage({super.key});
+/// Listens to Firebase auth state changes and shows the appropriate screen.
+/// - Logged in  → HomeScreen
+/// - Logged out → LoginScreen
+class AuthGate extends StatelessWidget {
+  const AuthGate({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Row(
-          children: [
-            Icon(Icons.eco, color: Colors.green),
-            SizedBox(width: 8),
-            Text(
-              'HarvestHub',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            ),
-          ],
-        ),
-        backgroundColor: Colors.green.shade50,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Card(
-              elevation: 2,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              color: Colors.green.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.check_circle, color: Colors.green, size: 28),
-                        const SizedBox(width: 10),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'HarvestHub Workspace',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              'Project ID: ${HarvestHubDummyData.projectId}',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: Colors.grey.shade700,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const Divider(height: 24),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Status:',
-                          style: TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Colors.green.shade700,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: const Text(
-                            'Ready for work',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-
-            const SizedBox(height: 24),
-
-            const Text(
-              'Sample Crop Inventory (Dummy Data)',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'This dummy data is prepared for syncing with your Firebase project.',
-              style: TextStyle(color: Colors.black54, fontSize: 13),
-            ),
-            const SizedBox(height: 12),
-
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: HarvestHubDummyData.dummyCrops.length,
-              separatorBuilder: (context, index) => const SizedBox(height: 10),
-              itemBuilder: (context, index) {
-                final crop = HarvestHubDummyData.dummyCrops[index];
-                return Card(
-                  elevation: 1,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
+    return StreamBuilder<User?>(
+      stream: FirebaseAuth.instance.authStateChanges(),
+      builder: (context, snapshot) {
+        // While waiting for auth state
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Scaffold(
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundColor: Color(0xFF2E7D32),
+                    child: Icon(Icons.eco, color: Colors.white, size: 44),
                   ),
-                  child: ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: Colors.green.shade100,
-                      child: const Icon(Icons.agriculture, color: Colors.green),
-                    ),
-                    title: Text(
-                      crop['name'] as String,
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(
-                      'Category: ${crop['category']} • Quantity: ${crop['quantity']}',
-                    ),
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          crop['pricePerKg'] as String,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.green,
-                            fontSize: 16,
-                          ),
-                        ),
-                        Text(
-                          crop['status'] as String,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                      ],
+                  SizedBox(height: 20),
+                  Text(
+                    'HarvestHub',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2E7D32),
                     ),
                   ),
-                );
-              },
+                  SizedBox(height: 20),
+                  CircularProgressIndicator(),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
+          );
+        }
+
+        // User is logged in → show home
+        if (snapshot.hasData && snapshot.data != null) {
+          return const HomeScreen();
+        }
+
+        return HomeScreen();
+        // No user → show login
+        // return const LoginScreen();
+      },
     );
   }
 }
