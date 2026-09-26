@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../hashir_work/app.dart' as customer_app;
+import 'customer.dart';
+import 'operations.dart';
 import 'assistant.dart';
 import 'auth.dart';
 import 'components.dart';
-import 'customer.dart';
 import 'models.dart';
 import 'onboarding.dart';
-import 'operations.dart';
 import 'orders.dart';
 import 'store.dart';
 import 'firebase_store.dart';
@@ -68,7 +69,19 @@ class _HarvestHubAppState extends State<HarvestHubApp> {
   }
 
   @override
-  Widget build(BuildContext context) => HarvestScope(
+  Widget build(BuildContext context) {
+    // Signed-in customers use the customer app from lib/hashir_work; it shares
+    // the same Firebase login, and signing out there returns here.
+    if (store.live && store.authenticated && store.role == UserRole.customer) {
+      return const customer_app.HarvestHubApp(
+        key: ValueKey('customer-app'),
+        skipStartup: true,
+      );
+    }
+    return _adminApp(context);
+  }
+
+  Widget _adminApp(BuildContext context) => HarvestScope(
     store: store,
     child: ThemeReveal(
       builder: (mode, wrap) => MaterialApp(
@@ -297,9 +310,8 @@ class _StartupScreenState extends State<StartupScreen>
                   child: TextButton.icon(
                     onPressed: _finishNow,
                     style: TextButton.styleFrom(
-                      foregroundColor: const Color(
-                        0xFFF2EFE9,
-                      ).withValues(alpha: 0.90),
+                      foregroundColor: const Color(0xFFF2EFE9)
+                          .withValues(alpha: 0.90),
                       backgroundColor: Colors.black.withValues(alpha: 0.35),
                       padding: const EdgeInsets.symmetric(
                         horizontal: 14,
@@ -350,16 +362,14 @@ class _StartupScreenState extends State<StartupScreen>
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: const Color(
-                                          0xFFE8A93B,
-                                        ).withValues(alpha: 0.45),
+                                        color: const Color(0xFFE8A93B)
+                                            .withValues(alpha: 0.45),
                                         width: 1.5,
                                       ),
                                       boxShadow: [
                                         BoxShadow(
-                                          color: const Color(
-                                            0xFF5C8A3A,
-                                          ).withValues(alpha: 0.25),
+                                          color: const Color(0xFF5C8A3A)
+                                              .withValues(alpha: 0.25),
                                           blurRadius: 28,
                                           spreadRadius: 4,
                                         ),
@@ -376,9 +386,8 @@ class _StartupScreenState extends State<StartupScreen>
                                     decoration: BoxDecoration(
                                       shape: BoxShape.circle,
                                       border: Border.all(
-                                        color: const Color(
-                                          0xFF8FC494,
-                                        ).withValues(alpha: 0.35),
+                                        color: const Color(0xFF8FC494)
+                                            .withValues(alpha: 0.35),
                                         width: 1.0,
                                       ),
                                     ),
@@ -499,9 +508,8 @@ class _StartupScreenState extends State<StartupScreen>
                                           fontSize: 11,
                                           fontWeight: FontWeight.w800,
                                           letterSpacing: 3.2,
-                                          color: const Color(
-                                            0xFFE8A93B,
-                                          ).withValues(alpha: 0.95),
+                                          color: const Color(0xFFE8A93B)
+                                              .withValues(alpha: 0.95),
                                         ),
                                       ),
                                       const SizedBox(width: 8),
@@ -546,14 +554,12 @@ class _StartupScreenState extends State<StartupScreen>
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFFE8A93B,
-                                    ).withValues(alpha: 0.15),
+                                    color: const Color(0xFFE8A93B)
+                                        .withValues(alpha: 0.15),
                                     borderRadius: BorderRadius.circular(999),
                                     border: Border.all(
-                                      color: const Color(
-                                        0xFFE8A93B,
-                                      ).withValues(alpha: 0.40),
+                                      color: const Color(0xFFE8A93B)
+                                          .withValues(alpha: 0.40),
                                       width: 1,
                                     ),
                                   ),

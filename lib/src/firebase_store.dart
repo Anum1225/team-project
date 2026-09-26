@@ -1,4 +1,5 @@
 import 'notifications.dart';
+
 import 'dart:async';
 import 'dart:convert';
 
@@ -69,7 +70,17 @@ class FirebaseStore extends HarvestStore {
   @override
   bool get authenticated => _account?.active == true;
   @override
-  Account get account => _account!;
+  // Screens can rebuild for a frame while the profile is (re)loading; return a
+  // placeholder instead of throwing "Null check operator used on a null value".
+  Account get account =>
+      _account ??
+      Account(
+        id: _auth.currentUser?.uid ?? '',
+        name: '',
+        email: _auth.currentUser?.email ?? '',
+        role: role,
+        active: false,
+      );
   @override
   bool get hasMore => _more.isNotEmpty;
   @override
@@ -226,12 +237,12 @@ class FirebaseStore extends HarvestStore {
     watch('users', userQuery.orderBy(FieldPath.documentId), (d) {
       accounts
         ..clear()
-        ..addAll(d.map(readAccount));
+        ..addAll(_parse(d, readAccount));
     });
     watch('farms', _db.collection('farms').orderBy(FieldPath.documentId), (d) {
       farms
         ..clear()
-        ..addAll(d.map(readFarm));
+        ..addAll(_parse(d, readFarm));
     });
     Query<Map<String, dynamic>> pq = _db
         .collection('products')
@@ -239,19 +250,21 @@ class FirebaseStore extends HarvestStore {
     watch('products', pq.orderBy(FieldPath.documentId), (d) {
       products
         ..clear()
-        ..addAll(d.map(readProduct));
+        ..addAll(_parse(d, readProduct));
     });
     watch(
       'categories',
       _db.collection('categories').orderBy(FieldPath.documentId),
       (d) {
+        // Skip category docs without a name instead of failing the whole load.
+        final named = d.where((x) => x.data()['name'] is String);
         categories
           ..clear()
-          ..addAll(d.map((x) => x.data()['name'] as String));
+          ..addAll(named.map((x) => x.data()['name'] as String));
         categoryCounts
           ..clear()
           ..addEntries(
-            d.map(
+            named.map(
               (x) => MapEntry(
                 x.data()['name'] as String,
                 (x.data()['productCount'] as num?)?.toInt() ?? 0,
@@ -268,8 +281,7 @@ class FirebaseStore extends HarvestStore {
       orders
         ..clear()
         ..addAll(
-          d.map((x) {
-            final o = readOrder(x);
+          _parse(d, readOrder).map((o) {
             final old = previous[o.id];
             if (old != null) {
               old.status = o.status;
@@ -723,8 +735,26 @@ String _s(Map<String, dynamic> d, String k, [String fallback = '']) =>
     d[k] is String ? d[k] as String : fallback;
 int _n(Map<String, dynamic> d, String k) {
   final v = d[k];
-  if (v is! int || v < 0) throw FormatException('Invalid $k');
-  return v;
+  // Accept whole-number doubles (e.g. 150.0) written by other clients.
+  if (v is num && v >= 0 && v == v.roundToDouble()) return v.toInt();
+  throw FormatException('Invalid $k');
+}
+
+/// Parses each document, skipping (and logging) malformed ones so a single bad
+/// record cannot break the whole screen after login.
+List<T> _parse<T>(
+  List<QueryDocumentSnapshot<Map<String, dynamic>>> docs,
+  T Function(DocumentSnapshot<Map<String, dynamic>>) read,
+) {
+  final result = <T>[];
+  for (final doc in docs) {
+    try {
+      result.add(read(doc));
+    } catch (e) {
+      debugPrint('Skipping malformed ${doc.reference.path}: $e');
+    }
+  }
+  return result;
 }
 
 DateTime? _date(dynamic v) => v is Timestamp ? v.toDate() : null;

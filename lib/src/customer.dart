@@ -1,7 +1,10 @@
 import 'notifications.dart';
+
 import 'dart:async';
+
 import 'assistant_robot.dart';
 import 'location_picker.dart';
+
 import 'package:geolocator/geolocator.dart';
 
 import 'package:flutter/material.dart';
@@ -990,16 +993,14 @@ class _ProductScreenState extends State<ProductScreen> {
                           Radius.elliptical(220, 48),
                         ),
                         border: Border.all(
-                          color: const Color(
-                            0xFF10B981,
-                          ).withValues(alpha: 0.35),
+                          color: const Color(0xFF10B981)
+                              .withValues(alpha: 0.35),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(
-                              0xFF0E4D34,
-                            ).withValues(alpha: 0.08),
+                            color: const Color(0xFF0E4D34)
+                                .withValues(alpha: 0.08),
                             blurRadius: 18,
                             spreadRadius: 2,
                             offset: const Offset(0, 10),
@@ -1806,9 +1807,8 @@ class FarmScreen extends StatelessWidget {
                         color: const Color(0xFF16A34A).withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: const Color(
-                            0xFF16A34A,
-                          ).withValues(alpha: 0.25),
+                          color: const Color(0xFF16A34A)
+                              .withValues(alpha: 0.25),
                         ),
                       ),
                       child: const Row(
@@ -2353,10 +2353,11 @@ class BasketScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final store = HarvestScope.of(context);
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final items = store.basket.entries.map((e) {
-      final p = store.product(e.key)!;
-      return (p, e.value);
-    }).toList();
+    // Skip basket lines whose product is no longer loaded (archived/removed).
+    final items = [
+      for (final e in store.basket.entries)
+        if (store.product(e.key) case final p?) (p, e.value),
+    ];
 
     return Scaffold(
       backgroundColor: Harvest.colors(context).cream,
@@ -2385,8 +2386,7 @@ class BasketScreen extends StatelessWidget {
           ? EmptyState(
               icon: Icons.shopping_basket_outlined,
               title: 'Your cart is empty',
-              message:
-                  'Browse our local growers to discover fruits, vegetables, and pantry items harvested fresh today.',
+              message: 'Browse our local growers to discover fruits, vegetables, and pantry items harvested fresh today.',
               action: 'Start Shopping',
               onAction: () => Navigator.pop(context),
             )
@@ -2787,9 +2787,10 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
     final store = HarvestScope.of(context);
     final palette = Harvest.colors(context);
 
-    final basketFarms = store.basket.keys
-        .map((id) => store.farm(store.product(id)!.farmId))
-        .toList();
+    final basketFarms = [
+      for (final id in store.basket.keys)
+        if (store.product(id) case final p?) store.farm(p.farmId),
+    ];
     final timeSlots = basketFarms.isEmpty
         ? <String>[]
         : basketFarms.first.pickupSlots
