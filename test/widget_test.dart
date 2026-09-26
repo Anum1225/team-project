@@ -9,9 +9,7 @@ import 'package:untitled/src/preview_store.dart';
 
 void main() {
   setUpAll(loadHarvestFonts);
-  testWidgets('welcome offers distinct roles and explicit design preview', (
-    tester,
-  ) async {
+  testWidgets('first run opens role-aware auth directly', (tester) async {
     tester.view.physicalSize = const Size(393, 873);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -20,13 +18,22 @@ void main() {
       HarvestHubApp(skipStartup: true, store: PreviewStore()),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Shop fresh'), findsOneWidget);
-    await tester.tap(find.text('Shop fresh'));
-    await tester.pumpAndSettle();
-    expect(find.text('Welcome\nback.'), findsOneWidget);
+    expect(find.text('Welcome back'), findsOneWidget);
+    expect(find.text('Farmer'), findsNothing);
+    expect(find.text('Admin'), findsNothing);
     await tester.tap(find.text('Sign in'));
     await tester.pumpAndSettle();
     expect(find.text('Enter a valid email address.'), findsOneWidget);
+    await tester.ensureVisible(find.text('Sign Up'));
+    await tester.tap(find.text('Sign Up'));
+    await tester.pumpAndSettle();
+    expect(find.text('Customer'), findsOneWidget);
+    expect(find.text('Farmer'), findsOneWidget);
+    expect(find.text('Admin'), findsNothing);
+    await tester.tap(find.text('Farmer'));
+    await tester.pumpAndSettle();
+    expect(find.text('Create your farmer account'), findsOneWidget);
+    expect(find.byTooltip('Choose location on map'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -98,7 +105,7 @@ void main() {
     await tester.enterText(find.byType(TextField).first, 'tomato');
     await tester.pump(const Duration(milliseconds: 250));
     await tester.pumpAndSettle();
-    expect(find.text('1 fresh finds'), findsOneWidget);
+    expect(find.text('1 product'), findsOneWidget);
     await tester.tap(find.byTooltip('Save Vine tomatoes'));
     await tester.pumpAndSettle();
     expect(store.saved, contains('tomato'));
@@ -113,7 +120,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Continue to Checkout · Rs 180'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Confirm order · Rs 180'));
+    await tester.tap(find.text('Place simulated order · Rs 180'));
     await tester.pumpAndSettle();
     expect(find.text('Order confirmed'), findsOneWidget);
     expect(store.basket, isEmpty);

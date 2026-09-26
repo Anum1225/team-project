@@ -22,18 +22,9 @@
       }
     }
   },
-  "functions": [
-    {
-      "source": "functions",
-      "codebase": "harvesthub"
-    }
-  ],
   "firestore": {
     "rules": "firestore.rules",
     "indexes": "firestore.indexes.json"
-  },
-  "storage": {
-    "rules": "storage.rules"
   },
   "emulators": {
     "auth": {
@@ -42,15 +33,21 @@
     "firestore": {
       "port": 8080
     },
-    "functions": {
-      "port": 5001
-    },
-    "storage": {
-      "port": 9199
-    },
     "ui": {
       "enabled": false
     },
     "singleProjectMode": true
-  }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "notifications",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "*-debug.log",
+        "test"
+      ]
+    }
+  ]
 }

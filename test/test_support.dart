@@ -4,8 +4,9 @@ import 'package:flutter_test/flutter_test.dart';
 Future<void> loadHarvestFonts() async {
   TestWidgetsFlutterBinding.ensureInitialized();
   for (final entry in {
+    'Outfit': 'Outfit.ttf',
     'Manrope': 'Manrope.ttf',
-    'DMSerifDisplay': 'DMSerifDisplay-Regular.ttf',
+    'Fraunces': 'Fraunces.ttf',
   }.entries) {
     final loader = FontLoader(entry.key)
       ..addFont(rootBundle.load('assets/fonts/${entry.value}'));

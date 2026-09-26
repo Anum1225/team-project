@@ -4,7 +4,6 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:untitled/src/app.dart';
 import 'package:untitled/src/assistant.dart';
 import 'package:untitled/src/auth.dart';
 import 'package:untitled/src/components.dart';
@@ -38,10 +37,9 @@ void main() {
         store.setQuantity('tomato', 2);
         store.toggleSaved('berry');
         final screens = <String, (UserRole, Widget)>{
-          'welcome': (UserRole.customer, WelcomeScreen(onPreview: (_) {})),
           'login': (
             UserRole.customer,
-            AuthScreen(role: UserRole.customer, onPreview: (_) {}),
+            const AuthScreen(role: UserRole.customer),
           ),
           'recovery': (UserRole.customer, const PasswordHelpScreen()),
           'product': (

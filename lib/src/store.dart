@@ -18,11 +18,8 @@ class HarvestStore extends ChangeNotifier {
   Future<void> loadReport(int days) async {}
   Future<Map<String, dynamic>> fetchReport(int days) async => report ?? {};
   Future<void> signOut() async {}
-  Future<String?> signIn(
-    String email,
-    String password,
-    UserRole selected,
-  ) async => 'Authentication is unavailable in a test preview.';
+  Future<String?> signIn(String email, String password) async =>
+      'Authentication is unavailable in a test preview.';
   Future<String?> register(
     String email,
     String password,
@@ -57,11 +54,37 @@ class HarvestStore extends ChangeNotifier {
   final Map<String, int> basket = {};
   final Set<String> saved = {};
   final List<String> recentSearches = [];
+  final List<FeedbackItem> feedback = [];
   UserRole role = UserRole.customer;
   int _sequence = 1050;
   Account get account => accounts.firstWhere((a) => a.role == role);
-  Farm get ownFarm => farms.firstWhere((f) => f.owner == account.id);
-  Farm farm(String id) => farms.firstWhere((f) => f.id == id);
+  Farm get ownFarm =>
+      farms.where((f) => f.owner == account.id).firstOrNull ??
+      farms.firstWhere(
+        (f) => f.owner == account.id,
+        orElse: () => farms.isNotEmpty
+            ? farms.first
+            : Farm(
+                id: account.id,
+                name: account.name,
+                owner: account.id,
+                location: account.address,
+                market: '',
+                description: '',
+                image: '',
+              ),
+      );
+  Farm farm(String id) =>
+      farms.where((f) => f.id == id).firstOrNull ??
+      Farm(
+        id: id,
+        name: 'Farm $id',
+        owner: '',
+        location: '',
+        market: '',
+        description: '',
+        image: '',
+      );
   Product? product(String id) {
     for (final p in products) {
       if (p.id == id) return p;
@@ -70,14 +93,22 @@ class HarvestStore extends ChangeNotifier {
   }
 
   List<Product> get visibleProducts => role == UserRole.farmer
-      ? products.where((p) => p.farmId == ownFarm.id).toList()
+      ? products
+            .where(
+              (p) =>
+                  p.farmId == ownFarm.id ||
+                  farms.any((f) => f.owner == account.id && f.id == p.farmId),
+            )
+            .toList()
       : products.toList();
   List<HarvestOrder> get visibleOrders =>
       orders
           .where(
             (o) => switch (role) {
               UserRole.customer => o.customerId == account.id,
-              UserRole.farmer => o.farmId == ownFarm.id,
+              UserRole.farmer =>
+                o.farmId == ownFarm.id ||
+                    farms.any((f) => f.owner == account.id && f.id == o.farmId),
               UserRole.admin => true,
             },
           )
@@ -90,10 +121,30 @@ class HarvestStore extends ChangeNotifier {
   );
   bool canManage(Product p) =>
       role == UserRole.admin ||
-      role == UserRole.farmer && p.farmId == ownFarm.id;
+      (role == UserRole.farmer &&
+          (p.farmId == ownFarm.id ||
+              farms.any((f) => f.owner == account.id && f.id == p.farmId)));
   void chooseRole(UserRole value) {
     role = value;
     notifyListeners();
+  }
+
+  final Set<String> followed = {};
+  final Map<String, String> pickupSlots = {};
+
+  String? pickupSlot(String orderId) => pickupSlots[orderId];
+
+  FutureOr<String?> updatePickupSlot(String orderId, String? slot) {
+    if (role != UserRole.customer) {
+      return 'Only customers manage pickup bookings.';
+    }
+    if (slot == null || slot.trim().isEmpty) {
+      pickupSlots.remove(orderId);
+    } else {
+      pickupSlots[orderId] = slot.trim();
+    }
+    notifyListeners();
+    return null;
   }
 
   void toggleSaved(String id) {
@@ -101,6 +152,14 @@ class HarvestStore extends ChangeNotifier {
     saved.contains(id) ? saved.remove(id) : saved.add(id);
     notifyListeners();
   }
+
+  void toggleFollowed(String farmId) {
+    if (role != UserRole.customer) return;
+    followed.contains(farmId) ? followed.remove(farmId) : followed.add(farmId);
+    notifyListeners();
+  }
+
+  bool isFollowed(String farmId) => followed.contains(farmId);
 
   void rememberSearch(String query) {
     final value = query.trim();
@@ -133,7 +192,7 @@ class HarvestStore extends ChangeNotifier {
     notifyListeners();
   }
 
-  FutureOr<List<HarvestOrder>> checkout(String address) {
+  FutureOr<List<HarvestOrder>> checkout(String address, {String? pickupSlot}) {
     if (role != UserRole.customer || !account.active) {
       throw StateError('This account cannot place orders.');
     }
@@ -186,6 +245,11 @@ class HarvestStore extends ChangeNotifier {
       product(e.key)!.stock -= e.value;
     }
     orders.addAll(created);
+    if (pickupSlot != null && pickupSlot.trim().isNotEmpty) {
+      for (final o in created) {
+        pickupSlots[o.id] = pickupSlot.trim();
+      }
+    }
     basket.clear();
     account.address = address.trim();
     notifyListeners();
@@ -194,7 +258,9 @@ class HarvestStore extends ChangeNotifier {
 
   FutureOr<String?> updateStatus(HarvestOrder order, OrderStatus status) {
     if (role == UserRole.customer ||
-        role == UserRole.farmer && order.farmId != ownFarm.id) {
+        (role == UserRole.farmer &&
+            order.farmId != ownFarm.id &&
+            !farms.any((f) => f.owner == account.id && f.id == order.farmId))) {
       return 'You do not have access to update this order.';
     }
     if (!order.status.active) return 'This order is already closed.';
@@ -216,8 +282,10 @@ class HarvestStore extends ChangeNotifier {
   FutureOr<String?> saveProduct(Product value) {
     final existing = product(value.id);
     if (role == UserRole.customer ||
-        role == UserRole.farmer && value.farmId != ownFarm.id ||
-        existing != null && !canManage(existing)) {
+        (role == UserRole.farmer &&
+            value.farmId != ownFarm.id &&
+            !farms.any((f) => f.owner == account.id && f.id == value.farmId)) ||
+        (existing != null && !canManage(existing))) {
       return 'You cannot edit this product.';
     }
     if (value.name.trim().isEmpty ||

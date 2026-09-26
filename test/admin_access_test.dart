@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:untitled/src/app.dart';
+import 'package:untitled/src/auth.dart';
 import 'package:untitled/src/components.dart';
 import 'package:untitled/src/models.dart';
 import 'package:untitled/src/operations.dart';
@@ -36,7 +37,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text('Platform Overview'), findsNothing);
-    expect(find.byType(WelcomeScreen), findsOneWidget);
+    expect(find.byType(AuthScreen), findsOneWidget);
     expect(find.text('Explore Roles Demo'), findsNothing);
   });
   for (final role in [UserRole.customer, UserRole.farmer]) {
@@ -77,7 +78,7 @@ void main() {
     await store.signOut();
     await tester.pumpAndSettle();
     expect(find.text('Market Categories'), findsNothing);
-    expect(find.byType(WelcomeScreen), findsOneWidget);
+    expect(find.byType(AuthScreen), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

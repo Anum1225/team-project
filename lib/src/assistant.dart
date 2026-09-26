@@ -1,26 +1,38 @@
+import 'dart:async';
+import 'gemini_assistant.dart';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'components.dart';
-import 'customer.dart';
-import 'models.dart';
 import 'theme.dart';
 
 class AssistantScreen extends StatefulWidget {
-  const AssistantScreen({super.key});
+  const AssistantScreen({super.key, this.assistant});
+  final GeminiAssistant? assistant;
 
   @override
   State<AssistantScreen> createState() => _AssistantScreenState();
 }
 
-class _AssistantScreenState extends State<AssistantScreen> {
-  int _activeTab = 0; // 0: Growth & Statistics, 1: AI Advisor
+class _AssistantScreenState extends State<AssistantScreen>
+    with TickerProviderStateMixin {
   final TextEditingController _input = TextEditingController();
   final ScrollController _scroll = ScrollController();
-  final List<({bool user, String text})> _messages = [];
-  bool _isTyping = false;
+  final List<({bool user, String text, bool isTyping})> _messages = [];
+  bool _isThinking = false;
+  bool _isWriting = false;
+  StreamSubscription<String>? _response;
+  String? _chatError;
+  int _conversationGeneration = 0;
 
-  static const List<String> _prompts = [
+  late final AnimationController _dotController = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1200),
+  )..repeat();
+
+  static final List<String> _prompts = [
     'Which fruits are rich in Vitamin C?',
     'How should tomatoes be stored?',
     'Which vegetables are seasonal right now?',
@@ -30,60 +42,86 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
   @override
   void dispose() {
+    _response?.cancel();
     _input.dispose();
     _scroll.dispose();
+    _dotController.dispose();
     super.dispose();
   }
 
-  String _generateAnswer(String question) {
-    final q = question.toLowerCase();
-    if (q.contains('tomato') || q.contains('stor')) {
-      return 'For whole fresh tomatoes, allow them to ripen at room temperature away from direct sunlight. Refrigeration can dull their aroma and make texture mealy. Only refrigerate once fully ripe or cut.\n\nTip: Let chilled tomatoes reach room temperature before slicing for maximum sweetness.\n\nReference: Agricultural & Food Extension Storage Guidelines.';
-    }
-    if (q.contains('vitamin') || q.contains('c') || q.contains('fruit')) {
-      return 'Strawberries, citrus fruits, guava, and bell peppers are exceptionally rich in Vitamin C. Consuming them raw or gently tossed preserves their delicate water-soluble vitamins.\n\nNote: General nutritional insight; not intended as medical advice.\n\nReference: USDA Dietary Guidelines for Fresh Produce.';
-    }
-    if (q.contains('spinach') || q.contains('benefit') || q.contains('iron')) {
-      return 'Spinach provides vital dietary fiber, iron, folate, and carotenoids (lutein & zeaxanthin) which support eye health and energy. Pairing raw spinach with Vitamin C (like fresh lemon juice) boosts plant iron absorption.\n\nReference: Food Nutrition Board & Horticultural Research.';
-    }
-    if (q.contains('salad') || q.contains('recipe')) {
-      return 'For a vibrant, wholesome salad:\n• Base: Crisp baby spinach & fresh leaves\n• Crunch: Shaved heirloom carrots & cucumber\n• Sweetness: Ripe vine tomatoes & fresh strawberries\n• Dressing: Cold-pressed olive oil, raw honey, lemon juice & sea salt.\n\nExplore our local farm catalog to discover these items harvested today!';
-    }
-    if (q.contains('season') || q.contains('avail')) {
-      final store = HarvestScope.of(context);
-      final inStock = store.products.where((p) => p.stock > 0).take(4);
-      return 'Current local seasonal harvests available directly from growers:\n\n${inStock.map((p) => '• ${p.name} (${money(p.price)}/${p.unit}) from ${store.farm(p.farmId).name}').join('\n')}\n\nVisit the Explore tab to browse fresh picks!';
-    }
-    return 'I specialize in fresh produce wisdom, kitchen storage tips, and nutritional profiles for local farm harvests (e.g. tomatoes, spinach, seasonal fruits, and wholesome salads).\n\nFeel free to tap one of the suggested prompts below!';
-  }
-
-  void _send(String text) {
+  void _send(String text, {bool retry = false}) {
     final value = text.trim();
-    if (value.isEmpty) return;
-
+    if (value.isEmpty || _isThinking || _isWriting) return;
+    final store = HarvestScope.of(context);
     HapticFeedback.lightImpact();
     setState(() {
-      _messages.add((user: true, text: value));
+      if (!retry) _messages.add((user: true, text: value, isTyping: false));
       _input.clear();
-      _isTyping = true;
+      _chatError = null;
+      _isThinking = true;
     });
-
+    final generation = ++_conversationGeneration;
+    final history = _messages.map((m) => (user: m.user, text: m.text)).toList();
+    var answer = '';
+    int? answerIndex;
+    _response = (widget.assistant ?? GeminiAssistant())
+        .answer(history, store)
+        .listen(
+          (chunk) {
+            if (!mounted || generation != _conversationGeneration) return;
+            setState(() {
+              _isThinking = false;
+              _isWriting = true;
+              answer += chunk;
+              if (answerIndex == null) {
+                answerIndex = _messages.length;
+                _messages.add((user: false, text: answer, isTyping: true));
+              } else {
+                _messages[answerIndex!] = (
+                  user: false,
+                  text: answer,
+                  isTyping: true,
+                );
+              }
+            });
+            _scrollToBottom();
+          },
+          onError: (Object error) {
+            if (!mounted || generation != _conversationGeneration) return;
+            setState(() {
+              _isThinking = false;
+              _isWriting = false;
+              // A partial stream must not be passed to Gemini as a complete answer.
+              if (answerIndex != null) _messages.removeAt(answerIndex!);
+              _chatError =
+                  'Ola could not connect to Gemini. Check your connection and try again.';
+            });
+          },
+          onDone: () {
+            if (!mounted || generation != _conversationGeneration) return;
+            setState(() {
+              _isThinking = false;
+              _isWriting = false;
+              if (answerIndex != null) {
+                _messages[answerIndex!] = (
+                  user: false,
+                  text: answer,
+                  isTyping: false,
+                );
+              }
+            });
+          },
+          cancelOnError: true,
+        );
     _scrollToBottom();
-
-    // Gentle realistic processing delay
-    Future.delayed(const Duration(milliseconds: 450), () {
-      if (!mounted) return;
-      setState(() {
-        _isTyping = false;
-        _messages.add((user: false, text: _generateAnswer(value)));
-      });
-      _scrollToBottom();
-    });
   }
 
   void _scrollToBottom() {
+    final generation = _conversationGeneration;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_scroll.hasClients) {
+      if (mounted &&
+          generation == _conversationGeneration &&
+          _scroll.hasClients) {
         _scroll.animateTo(
           _scroll.position.maxScrollExtent + 80,
           duration: const Duration(milliseconds: 300),
@@ -95,121 +133,56 @@ class _AssistantScreenState extends State<AssistantScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF7FAF8),
+    backgroundColor: Harvest.colors(context).canvas,
     appBar: AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
       centerTitle: true,
-      title: const Text(
-        'Statistic & Advisor',
+      title: Text(
+        'HarvestHub assistant',
         style: TextStyle(
           fontWeight: FontWeight.w800,
           fontSize: 18,
-          color: Harvest.ink,
+          color: Harvest.colors(context).ink,
         ),
       ),
       actions: [
-        if (_activeTab == 1 && _messages.isNotEmpty)
+        if (_messages.isNotEmpty)
           IconButton(
             tooltip: 'New conversation',
-            onPressed: () => setState(() => _messages.clear()),
+            onPressed: () => setState(() {
+              _conversationGeneration++;
+              _messages.clear();
+              _isThinking = false;
+              _isWriting = false;
+              _response?.cancel();
+              if (_scroll.hasClients) _scroll.jumpTo(0);
+              _chatError = null;
+            }),
             icon: const Icon(Icons.refresh, size: 20),
           )
         else
-          Padding(
-            padding: const EdgeInsets.only(right: 14),
-            child: CircularNavButton(
-              icon: Icons.notifications_none_outlined,
-              hasBadge: true,
-              onPressed: () =>
-                  notice(context, 'Weekly plant growth verified at 9.5cm'),
-            ),
-          ),
+          const SizedBox(width: 12),
       ],
     ),
-    body: Column(
-      children: [
-        // Segmented Header Toggle [Growth & Statistics | AI Advisor]
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 6, 20, 12),
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Harvest.border),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => setState(() => _activeTab = 0),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _activeTab == 0
-                            ? Harvest.forest
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        'Growth & Statistics',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: _activeTab == 0 ? Colors.white : Harvest.muted,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(20),
-                    onTap: () => setState(() => _activeTab = 1),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
-                      padding: const EdgeInsets.symmetric(vertical: 10),
-                      decoration: BoxDecoration(
-                        color: _activeTab == 1
-                            ? Harvest.forest
-                            : Colors.transparent,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      alignment: Alignment.center,
-                      child: Text(
-                        'AI Harvest Advisor',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: _activeTab == 1 ? Colors.white : Harvest.muted,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        // Body Content
-        Expanded(
-          child: _activeTab == 0 ? const _StatisticView() : _buildAdvisorView(),
-        ),
-      ],
-    ),
+    body: _buildAdvisorView(),
   );
 
   Widget _buildAdvisorView() => Column(
     children: [
+      if (_chatError != null)
+        MaterialBanner(
+          content: Text(_chatError!),
+          actions: [
+            TextButton(
+              onPressed: () {
+                final last = _messages.lastWhere((m) => m.user);
+                _send(last.text, retry: true);
+              },
+              child: const Text('Retry'),
+            ),
+          ],
+        ),
       Expanded(
         child: ListView(
           controller: _scroll,
@@ -250,23 +223,26 @@ class _AssistantScreenState extends State<AssistantScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 6),
-              const Text(
-                'Your guide to produce, nutrition & storage.',
+              Text(
+                'Meet Ola. Fresh answers, powered by Gemini.',
                 textAlign: TextAlign.center,
-                style: TextStyle(color: Harvest.muted, fontSize: 14),
+                style: TextStyle(
+                  color: Harvest.colors(context).muted,
+                  fontSize: 14,
+                ),
               ),
               const SizedBox(height: 20),
               const InfoNote(
-                'Verified produce knowledge base. Focuses on agricultural storage, seasonal produce and culinary wellness. Not medical diagnosis.',
+                'Ask about fresh produce or the live catalog. AI answers can be mistaken; check farm details before ordering.',
                 icon: Icons.eco_outlined,
               ),
               const SizedBox(height: 24),
-              const Text(
+              Text(
                 'Suggested inquiries',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
-                  color: Harvest.muted,
+                  color: Harvest.colors(context).muted,
                 ),
               ),
               const SizedBox(height: 10),
@@ -274,7 +250,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                 Padding(
                   padding: const EdgeInsets.only(bottom: 10),
                   child: Material(
-                    color: Colors.white,
+                    color: Harvest.colors(context).surface,
                     borderRadius: BorderRadius.circular(16),
                     child: InkWell(
                       borderRadius: BorderRadius.circular(16),
@@ -286,7 +262,9 @@ class _AssistantScreenState extends State<AssistantScreen> {
                         ),
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: Harvest.border),
+                          border: Border.all(
+                            color: Harvest.colors(context).border,
+                          ),
                           boxShadow: Harvest.cardShadow,
                         ),
                         child: Row(
@@ -306,10 +284,10 @@ class _AssistantScreenState extends State<AssistantScreen> {
                                 ),
                               ),
                             ),
-                            const Icon(
+                            Icon(
                               Icons.arrow_forward_ios,
                               size: 12,
-                              color: Harvest.muted,
+                              color: Harvest.colors(context).muted,
                             ),
                           ],
                         ),
@@ -323,100 +301,304 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   alignment: message.user
                       ? Alignment.centerRight
                       : Alignment.centerLeft,
-                  child: Container(
-                    margin: EdgeInsets.only(
-                      bottom: 14,
-                      left: message.user ? 40 : 0,
-                      right: message.user ? 0 : 40,
-                    ),
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: message.user ? Harvest.forest : Colors.white,
-                      borderRadius: BorderRadius.only(
-                        topLeft: const Radius.circular(20),
-                        topRight: const Radius.circular(20),
-                        bottomLeft: Radius.circular(message.user ? 20 : 4),
-                        bottomRight: Radius.circular(message.user ? 4 : 20),
-                      ),
-                      border: Border.all(
-                        color: message.user
-                            ? Colors.transparent
-                            : Harvest.border,
-                      ),
-                      boxShadow: Harvest.cardShadow,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (!message.user) ...[
-                          Row(
-                            children: [
-                              const Icon(
-                                Icons.spa,
-                                size: 13,
-                                color: Harvest.green,
+                  child: Row(
+                    mainAxisAlignment: message.user
+                        ? MainAxisAlignment.end
+                        : MainAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (!message.user) ...[
+                        Container(
+                          width: 32,
+                          height: 32,
+                          margin: const EdgeInsets.only(bottom: 14, right: 8),
+                          decoration: const BoxDecoration(
+                            shape: BoxShape.circle,
+                            gradient: LinearGradient(
+                              colors: [Harvest.forest, Color(0xFF4CAF50)],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.eco_rounded,
+                            size: 16,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                      Flexible(
+                        child: Container(
+                          margin: EdgeInsets.only(
+                            bottom: 14,
+                            left: message.user ? 48 : 0,
+                            right: message.user ? 0 : 48,
+                          ),
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: message.user
+                                ? Harvest.forest
+                                : Harvest.colors(context).surface,
+                            borderRadius: BorderRadius.only(
+                              topLeft: const Radius.circular(20),
+                              topRight: const Radius.circular(20),
+                              bottomLeft: Radius.circular(
+                                message.user ? 20 : 4,
                               ),
-                              const SizedBox(width: 6),
-                              Text(
-                                'HARVEST KNOWLEDGE',
-                                style: TextStyle(
-                                  fontSize: 9,
-                                  fontWeight: FontWeight.w800,
-                                  letterSpacing: 1.2,
-                                  color: Harvest.green,
-                                ),
+                              bottomRight: Radius.circular(
+                                message.user ? 4 : 20,
+                              ),
+                            ),
+                            border: Border.all(
+                              color: message.user
+                                  ? Colors.transparent
+                                  : Harvest.colors(context).border,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.06),
+                                blurRadius: 12,
+                                offset: const Offset(0, 3),
                               ),
                             ],
                           ),
-                          const SizedBox(height: 8),
-                        ],
-                        SelectableText(
-                          message.text,
-                          style: TextStyle(
-                            color: message.user ? Colors.white : Harvest.ink,
-                            fontSize: 14,
-                            height: 1.5,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (!message.user) ...[
+                                Row(
+                                  children: [
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 3,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Harvest.colors(
+                                          context,
+                                        ).green.withValues(alpha: 0.12),
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Icon(
+                                            Icons.auto_awesome,
+                                            size: 11,
+                                            color: Harvest.colors(
+                                              context,
+                                            ).green,
+                                          ),
+                                          const SizedBox(width: 4),
+                                          Text(
+                                            'HARVEST GUIDE',
+                                            style: TextStyle(
+                                              fontSize: 9,
+                                              fontWeight: FontWeight.w800,
+                                              letterSpacing: 1.0,
+                                              color: Harvest.colors(
+                                                context,
+                                              ).green,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    if (message.isTyping) ...[
+                                      const SizedBox(width: 8),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 6,
+                                          vertical: 2,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: const Color(
+                                            0xFFE8A93B,
+                                          ).withValues(alpha: 0.15),
+                                          borderRadius: BorderRadius.circular(
+                                            6,
+                                          ),
+                                        ),
+                                        child: const Text(
+                                          'WRITING...',
+                                          style: TextStyle(
+                                            fontSize: 8,
+                                            fontWeight: FontWeight.w800,
+                                            letterSpacing: 0.8,
+                                            color: Color(0xFFE8A93B),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                              if (message.text.isNotEmpty)
+                                SelectableText(
+                                  message.text,
+                                  style: TextStyle(
+                                    color: message.user
+                                        ? Colors.white
+                                        : Harvest.colors(context).ink,
+                                    fontSize: 14,
+                                    height: 1.55,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              if (message.isTyping && message.text.isNotEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 2),
+                                  child: AnimatedBuilder(
+                                    animation: _dotController,
+                                    builder: (context, _) => SizedBox(
+                                      width: 8,
+                                      height: 16,
+                                      child: Opacity(
+                                        opacity:
+                                            (0.3 +
+                                                    0.7 *
+                                                        (0.5 +
+                                                            0.5 *
+                                                                ((_dotController.value *
+                                                                            6.28)
+                                                                        .remainder(
+                                                                          6.28,
+                                                                        ))
+                                                                    .abs() /
+                                                                3.14))
+                                                .clamp(0.0, 1.0),
+                                        child: Text(
+                                          '▌',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            color: Harvest.colors(
+                                              context,
+                                            ).green,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
-              if (_isTyping)
+              // Thinking indicator with animated bouncing dots
+              if (_isThinking)
                 Align(
                   alignment: Alignment.centerLeft,
-                  child: Container(
-                    margin: const EdgeInsets.only(bottom: 14),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Harvest.sage,
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    child: const Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Harvest.forest,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Container(
+                        width: 32,
+                        height: 32,
+                        margin: const EdgeInsets.only(bottom: 14, right: 8),
+                        decoration: const BoxDecoration(
+                          shape: BoxShape.circle,
+                          gradient: LinearGradient(
+                            colors: [Harvest.forest, Color(0xFF4CAF50)],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
                         ),
-                        SizedBox(width: 10),
-                        Text(
-                          'Harvest Assistant is thinking…',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: Harvest.forest,
-                          ),
+                        child: const Icon(
+                          Icons.eco_rounded,
+                          size: 16,
+                          color: Colors.white,
                         ),
-                      ],
-                    ),
+                      ),
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 14),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 18,
+                          vertical: 14,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Harvest.colors(context).surface,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(20),
+                            topRight: Radius.circular(20),
+                            bottomRight: Radius.circular(20),
+                            bottomLeft: Radius.circular(4),
+                          ),
+                          border: Border.all(
+                            color: Harvest.colors(context).border,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 10,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: AnimatedBuilder(
+                          animation: _dotController,
+                          builder: (context, _) {
+                            return Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                for (var i = 0; i < 3; i++) ...[
+                                  if (i > 0) const SizedBox(width: 4),
+                                  Transform.translate(
+                                    offset: Offset(
+                                      0,
+                                      -4 *
+                                          math
+                                              .sin(
+                                                (_dotController.value *
+                                                        2 *
+                                                        math.pi) -
+                                                    (i * 0.65),
+                                              )
+                                              .abs(),
+                                    ),
+                                    child: Container(
+                                      width: 8,
+                                      height: 8,
+                                      decoration: BoxDecoration(
+                                        color: Harvest.colors(context).green
+                                            .withValues(
+                                              alpha:
+                                                  0.45 +
+                                                  0.55 *
+                                                      math
+                                                          .sin(
+                                                            (_dotController
+                                                                        .value *
+                                                                    2 *
+                                                                    math.pi) -
+                                                                (i * 0.65),
+                                                          )
+                                                          .abs(),
+                                            ),
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                                const SizedBox(width: 10),
+                                Text(
+                                  'Thinking',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    fontStyle: FontStyle.italic,
+                                    color: Harvest.colors(context).muted,
+                                  ),
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
             ],
@@ -427,9 +609,11 @@ class _AssistantScreenState extends State<AssistantScreen> {
       // Premium composer bar
       Container(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 14),
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          border: Border(top: BorderSide(color: Harvest.border)),
+        decoration: BoxDecoration(
+          color: Harvest.colors(context).surface,
+          border: Border(
+            top: BorderSide(color: Harvest.colors(context).border),
+          ),
         ),
         child: SafeArea(
           top: false,
@@ -444,7 +628,7 @@ class _AssistantScreenState extends State<AssistantScreen> {
                   onSubmitted: _send,
                   decoration: InputDecoration(
                     hintText: 'Ask about nutrition, produce storage…',
-                    fillColor: Harvest.cream,
+                    fillColor: Harvest.colors(context).cream,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 16,
                       vertical: 12,
@@ -488,231 +672,6 @@ class _AssistantScreenState extends State<AssistantScreen> {
           ),
         ),
       ),
-    ],
-  );
-}
-
-class _StatisticView extends StatefulWidget {
-  const _StatisticView();
-
-  @override
-  State<_StatisticView> createState() => _StatisticViewState();
-}
-
-class _StatisticViewState extends State<_StatisticView> {
-  String _period = 'Weekly';
-  final Set<String> _joinedCommunities = {'Farming Community'};
-
-  final List<({String name, String author, String location, String photo})>
-  _communities = [
-    (
-      name: 'Farming Community',
-      author: 'Gun Hawkins',
-      location: 'New York, USA',
-      photo: 'farm',
-    ),
-    (
-      name: 'Agriculture Community',
-      author: 'Gun Hawkins',
-      location: 'New York, USA',
-      photo: 'market',
-    ),
-    (
-      name: 'Organic Growers Guild',
-      author: 'Elena Vance',
-      location: 'California, USA',
-      photo: 'tomatoes',
-    ),
-    (
-      name: 'Permaculture Collective',
-      author: 'Marcus Thorne',
-      location: 'Oregon, USA',
-      photo: 'strawberries',
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
-    children: [
-      // 1. Growth Spline Area Chart matching Reference 2 (Screen 4)
-      GrowthAreaChart(
-        title: 'Growth',
-        period: _period,
-        onPeriodChange: () {
-          setState(() {
-            _period = _period == 'Weekly' ? 'Monthly' : 'Weekly';
-          });
-          HapticFeedback.selectionClick();
-        },
-      ),
-      const SizedBox(height: 24),
-
-      // 2. Weather Advisory & Notes banner shortcut
-      InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () => openPage(context, const TodaysWeatherScreen()),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Harvest.forest,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x180E4D34),
-                blurRadius: 16,
-                offset: Offset(0, 4),
-              ),
-            ],
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.wb_sunny_outlined, color: Colors.white, size: 24),
-              SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Today’s Weather: 33°C Cloudy',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 14,
-                      ),
-                    ),
-                    SizedBox(height: 2),
-                    Text(
-                      'Tap to view crop observation notes & field logs',
-                      style: TextStyle(color: Color(0xFFD4E3D7), fontSize: 11),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios, color: Colors.white70, size: 14),
-            ],
-          ),
-        ),
-      ),
-      const SizedBox(height: 24),
-
-      // 3. Community List matching Reference 2 (Screen 4)
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'Community',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: Harvest.ink,
-            ),
-          ),
-          TextButton(
-            onPressed: () =>
-                notice(context, 'Showing all verified local grower circles'),
-            child: const Text(
-              'View all',
-              style: TextStyle(fontWeight: FontWeight.w700),
-            ),
-          ),
-        ],
-      ),
-      const SizedBox(height: 8),
-
-      for (final comm in _communities)
-        Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Harvest.border),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x06000000),
-                blurRadius: 10,
-                offset: Offset(0, 2),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              ClipRRect(
-                borderRadius: BorderRadius.circular(14),
-                child: Photo(comm.photo, width: 48, height: 48, radius: 14),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      comm.name,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: Harvest.ink,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${comm.author} · ${comm.location}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        color: Harvest.muted,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                height: 32,
-                child: OutlinedButton(
-                  onPressed: () {
-                    setState(() {
-                      if (_joinedCommunities.contains(comm.name)) {
-                        _joinedCommunities.remove(comm.name);
-                      } else {
-                        _joinedCommunities.add(comm.name);
-                      }
-                    });
-                    HapticFeedback.lightImpact();
-                  },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: _joinedCommunities.contains(comm.name)
-                        ? Colors.white
-                        : Harvest.forest,
-                    backgroundColor: _joinedCommunities.contains(comm.name)
-                        ? Harvest.forest
-                        : Colors.white,
-                    side: BorderSide(
-                      color: _joinedCommunities.contains(comm.name)
-                          ? Harvest.forest
-                          : Harvest.border,
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                  ),
-                  child: Text(
-                    _joinedCommunities.contains(comm.name)
-                        ? 'Joined'
-                        : 'Gabung',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
     ],
   );
 }

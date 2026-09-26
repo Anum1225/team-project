@@ -1,9 +1,13 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import 'models.dart';
 import 'store.dart';
 import 'theme.dart';
+import 'voice_search.dart';
+import 'animated_chart.dart';
 
 class HarvestScope extends InheritedNotifier<HarvestStore> {
   const HarvestScope({
@@ -36,10 +40,13 @@ Future<T?> openPage<T>(BuildContext context, Widget page) =>
             opacity: curve,
             child: SlideTransition(
               position: Tween<Offset>(
-                begin: const Offset(0, 0.04),
+                begin: const Offset(0, 0.03),
                 end: Offset.zero,
               ).animate(curve),
-              child: child,
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.985, end: 1.0).animate(curve),
+                child: child,
+              ),
             ),
           );
         },
@@ -84,9 +91,9 @@ Future<bool> confirmAction(
           const SizedBox(height: 12),
           Text(
             message,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
-              color: Harvest.muted,
+              color: Harvest.colors(context).muted,
               height: 1.5,
             ),
           ),
@@ -112,17 +119,22 @@ class SheetBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => SafeArea(
-    child: SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        24,
-        8,
-        24,
-        24 + MediaQuery.viewInsetsOf(context).bottom,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
+    child: Center(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 580),
+        child: SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            24,
+            8,
+            24,
+            24 + MediaQuery.viewInsetsOf(context).bottom,
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: children,
+          ),
+        ),
       ),
     ),
   );
@@ -234,7 +246,7 @@ class HarvestPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: backgroundColor ?? Harvest.cream,
+    backgroundColor: backgroundColor ?? Harvest.colors(context).cream,
     appBar: AppBar(
       title: Text(
         title,
@@ -253,10 +265,12 @@ class BottomAction extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Container(
-    decoration: const BoxDecoration(
-      color: Harvest.cream,
-      border: Border(top: BorderSide(color: Harvest.border, width: 1)),
-      boxShadow: [
+    decoration: BoxDecoration(
+      color: Harvest.colors(context).cream,
+      border: Border(
+        top: BorderSide(color: Harvest.colors(context).border, width: 1),
+      ),
+      boxShadow: const [
         BoxShadow(
           color: Color(0x0A14281C),
           blurRadius: 16,
@@ -306,8 +320,8 @@ class PageHeading extends StatelessWidget {
                 const SizedBox(height: 8),
                 Text(
                   subtitle!,
-                  style: const TextStyle(
-                    color: Harvest.muted,
+                  style: TextStyle(
+                    color: Harvest.colors(context).muted,
                     fontSize: 14,
                     height: 1.45,
                   ),
@@ -361,7 +375,7 @@ class SectionHeader extends StatelessWidget {
     child: Row(
       children: [
         if (icon != null) ...[
-          Icon(icon, size: 20, color: Harvest.forest),
+          Icon(icon, size: 20, color: Harvest.colors(context).green),
           const SizedBox(width: 8),
         ],
         Expanded(child: Text(title, style: Harvest.editorial(23))),
@@ -392,7 +406,7 @@ class SectionHeader extends StatelessWidget {
   );
 }
 
-class Photo extends StatelessWidget {
+class Photo extends StatefulWidget {
   const Photo(
     this.asset, {
     super.key,
@@ -412,48 +426,95 @@ class Photo extends StatelessWidget {
   final BoxFit fit;
 
   @override
+  State<Photo> createState() => _PhotoState();
+}
+
+class _PhotoState extends State<Photo> {
+  Uint8List? _decoded;
+  String? _decodedFrom;
+
+  Uint8List? _memoryBytes() {
+    if (widget.bytes != null) return widget.bytes;
+    final asset = widget.asset;
+    if (!asset.startsWith('data:image/jpeg;base64,')) return null;
+    if (_decoded == null || _decodedFrom != asset) {
+      _decodedFrom = asset;
+      _decoded = base64Decode(asset.substring(23));
+    }
+    return _decoded;
+  }
+
+  @override
   Widget build(BuildContext context) {
     Widget fallback(BuildContext context, Object error, StackTrace? stack) =>
         Container(
-          height: height,
-          width: width,
+          height: widget.height,
+          width: widget.width,
           decoration: BoxDecoration(
-            color: Harvest.sage,
-            borderRadius: BorderRadius.circular(radius),
+            color: Harvest.colors(context).paleLeaf,
+            borderRadius: BorderRadius.circular(widget.radius),
           ),
           alignment: Alignment.center,
-          child: const Icon(Icons.spa_outlined, color: Harvest.green, size: 30),
+          child: Icon(
+            Icons.spa_outlined,
+            color: Harvest.colors(context).green,
+            size: 30,
+          ),
         );
 
-    final image = bytes != null
-        ? Image.memory(
-            bytes!,
-            height: height,
-            width: width,
-            fit: fit,
-            semanticLabel: label,
-            errorBuilder: fallback,
-          )
-        : asset.startsWith('http')
-        ? Image.network(
-            asset,
-            height: height,
-            width: width,
-            fit: fit,
-            semanticLabel: label,
-            errorBuilder: fallback,
-          )
-        : Image.asset(
-            'assets/images/$asset.jpg',
-            height: height,
-            width: width,
-            fit: fit,
-            semanticLabel: label,
-            errorBuilder: fallback,
-            cacheWidth: 800,
-          );
-
-    return ClipRRect(borderRadius: BorderRadius.circular(radius), child: image);
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(widget.radius),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          final w = constraints.maxWidth.isFinite
+              ? constraints.maxWidth
+              : (widget.width ?? 0);
+          final h = constraints.maxHeight.isFinite
+              ? constraints.maxHeight
+              : (widget.height ?? 0);
+          final side = (w > h ? w : h) * dpr;
+          final cacheWidth = side <= 0
+              ? null
+              : (side > 1200 ? 1200 : side).ceil();
+          final bytes = _memoryBytes();
+          final asset = widget.asset;
+          Widget image;
+          if (bytes != null) {
+            image = Image.memory(
+              bytes,
+              height: widget.height,
+              width: widget.width,
+              fit: widget.fit,
+              semanticLabel: widget.label,
+              errorBuilder: fallback,
+              cacheWidth: cacheWidth,
+            );
+          } else if (asset.startsWith('http')) {
+            image = Image.network(
+              asset,
+              height: widget.height,
+              width: widget.width,
+              fit: widget.fit,
+              semanticLabel: widget.label,
+              errorBuilder: fallback,
+              cacheWidth: cacheWidth,
+            );
+          } else {
+            image = Image.asset(
+              'assets/images/$asset.jpg',
+              height: widget.height,
+              width: widget.width,
+              fit: widget.fit,
+              semanticLabel: widget.label,
+              errorBuilder: fallback,
+              cacheWidth: 800,
+            );
+          }
+          return image;
+        },
+      ),
+    );
   }
 }
 
@@ -466,7 +527,23 @@ class SeedMark extends StatelessWidget {
   Widget build(BuildContext context) => Semantics(
     label: 'HarvestHub seed mark',
     image: true,
-    child: CustomPaint(size: Size.square(size), painter: _SeedPainter(color)),
+    child: SizedBox(
+      width: size,
+      height: size,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(size * 0.28),
+        child: Image.asset(
+          'assets/images/app_logo.png',
+          width: size,
+          height: size,
+          fit: BoxFit.contain,
+          errorBuilder: (context, error, stackTrace) => CustomPaint(
+            size: Size.square(size),
+            painter: _SeedPainter(color),
+          ),
+        ),
+      ),
+    ),
   );
 }
 
@@ -511,6 +588,195 @@ class _SeedPainter extends CustomPainter {
   bool shouldRepaint(_SeedPainter oldDelegate) => oldDelegate.color != color;
 }
 
+/// Official HarvestHub top brand navigation header matching reference design
+class HarvestHubBrandHeader extends StatelessWidget {
+  const HarvestHubBrandHeader({
+    super.key,
+    required this.marketName,
+    this.onLocationTap,
+    this.onNotificationTap,
+    this.onProfileTap,
+    this.unreadNotifications = true,
+  });
+
+  final String marketName;
+  final VoidCallback? onLocationTap;
+  final VoidCallback? onNotificationTap;
+  final VoidCallback? onProfileTap;
+  final bool unreadNotifications;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = Harvest.colors(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Row(
+        children: [
+          // Logo emblem
+          const SeedMark(size: 34),
+          const SizedBox(width: 8),
+
+          // Title & Location
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: 'Harvest',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: isDark ? Colors.white : palette.forest,
+                            ),
+                          ),
+                          const TextSpan(
+                            text: 'H',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFFD97706),
+                            ),
+                          ),
+                          TextSpan(
+                            text: 'ub',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: isDark ? Colors.white : palette.forest,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD1FAE5),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'eGreen',
+                        style: TextStyle(
+                          fontFamily: 'Manrope',
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF047857),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                InkWell(
+                  onTap: onLocationTap,
+                  borderRadius: BorderRadius.circular(6),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.location_on_outlined,
+                        size: 13,
+                        color: palette.green,
+                      ),
+                      const SizedBox(width: 3),
+                      Flexible(
+                        child: Text(
+                          marketName,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'Manrope',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: palette.muted,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 2),
+                      Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 14,
+                        color: palette.muted,
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Notification Bell
+          IconButton(
+            onPressed: onNotificationTap,
+            icon: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Icon(
+                  Icons.notifications_none_rounded,
+                  size: 24,
+                  color: isDark ? Colors.white : palette.ink,
+                ),
+                if (unreadNotifications)
+                  Positioned(
+                    right: 2,
+                    top: 2,
+                    child: Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Color(0xFF10B981),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+
+          // User Avatar Button
+          InkWell(
+            onTap: onProfileTap,
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: palette.forest,
+                border: Border.all(
+                  color: const Color(0xFF10B981).withValues(alpha: 0.35),
+                  width: 1.5,
+                ),
+              ),
+              child: const Icon(
+                Icons.person_rounded,
+                size: 20,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -536,11 +802,14 @@ class EmptyState extends StatelessWidget {
           width: 80,
           height: 80,
           decoration: BoxDecoration(
-            color: Harvest.sage,
+            color: Harvest.colors(context).paleLeaf,
             shape: BoxShape.circle,
-            border: Border.all(color: Harvest.border, width: 1.5),
+            border: Border.all(
+              color: Harvest.colors(context).border,
+              width: 1.5,
+            ),
           ),
-          child: Icon(icon, size: 36, color: Harvest.forest),
+          child: Icon(icon, size: 36, color: Harvest.colors(context).green),
         ),
         const SizedBox(height: 22),
         Text(title, style: Harvest.editorial(26), textAlign: TextAlign.center),
@@ -548,8 +817,8 @@ class EmptyState extends StatelessWidget {
         Text(
           message,
           textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Harvest.muted,
+          style: TextStyle(
+            color: Harvest.colors(context).muted,
             fontSize: 14,
             height: 1.5,
           ),
@@ -573,10 +842,10 @@ class InfoNote extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
-      color: error ? const Color(0xFFFBECE7) : Harvest.sage,
+      color: error ? const Color(0xFFFBECE7) : Harvest.colors(context).paleLeaf,
       borderRadius: Harvest.radiusMd,
       border: Border.all(
-        color: error ? const Color(0xFFF1D2C9) : Harvest.border,
+        color: error ? const Color(0xFFF1D2C9) : Harvest.colors(context).border,
         width: 1,
       ),
     ),
@@ -615,6 +884,7 @@ class SearchBox extends StatelessWidget {
     this.onTap,
     this.readOnly = false,
     this.autofocus = false,
+    this.voiceSearch = false,
   });
 
   final TextEditingController? controller;
@@ -622,12 +892,13 @@ class SearchBox extends StatelessWidget {
   final String hint;
   final VoidCallback? onTap;
   final bool readOnly, autofocus;
+  final bool voiceSearch;
 
   @override
   Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
+    decoration: const BoxDecoration(
       borderRadius: Harvest.radiusMd,
-      boxShadow: const [
+      boxShadow: [
         BoxShadow(
           color: Color(0x0814281C),
           blurRadius: 12,
@@ -644,18 +915,41 @@ class SearchBox extends StatelessWidget {
       autofocus: autofocus,
       textInputAction: TextInputAction.search,
       decoration: InputDecoration(
-        prefixIcon: const Icon(Icons.search, size: 22, color: Harvest.forest),
+        prefixIcon: Icon(
+          Icons.search,
+          size: 22,
+          color: Harvest.colors(context).green,
+        ),
         hintText: hint,
-        hintStyle: const TextStyle(fontSize: 13, color: Harvest.muted),
-        fillColor: Colors.white,
-        suffixIcon: controller != null && controller!.text.isNotEmpty
-            ? IconButton(
-                tooltip: 'Clear search',
-                icon: const Icon(Icons.close, size: 18),
-                onPressed: () {
-                  controller!.clear();
-                  onChanged?.call('');
-                },
+        hintStyle: TextStyle(
+          fontSize: 13,
+          color: Harvest.colors(context).muted,
+        ),
+        fillColor: Harvest.colors(context).surface,
+        suffixIcon:
+            voiceSearch || (controller != null && controller!.text.isNotEmpty)
+            ? Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (controller != null && controller!.text.isNotEmpty)
+                    IconButton(
+                      tooltip: 'Clear search',
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        controller!.clear();
+                        onChanged?.call('');
+                      },
+                    ),
+                  if (voiceSearch)
+                    VoiceSearchControl(
+                      onText: (value) {
+                        if (controller != null) controller!.text = value;
+                        onChanged?.call(value);
+                        onSubmitted?.call(value);
+                      },
+                    ),
+                  const SizedBox(width: 6),
+                ],
               )
             : null,
       ),
@@ -688,15 +982,19 @@ class ChoiceRow extends StatelessWidget {
               label: Text(value),
               selected: selected == value,
               selectedColor: Harvest.forest,
-              backgroundColor: Colors.white,
+              backgroundColor: Harvest.colors(context).surface,
               labelStyle: TextStyle(
                 fontFamily: 'Manrope',
                 fontSize: 13,
                 fontWeight: FontWeight.w700,
-                color: selected == value ? Colors.white : Harvest.ink,
+                color: selected == value
+                    ? Colors.white
+                    : Harvest.colors(context).ink,
               ),
               side: BorderSide(
-                color: selected == value ? Harvest.forest : Harvest.border,
+                color: selected == value
+                    ? Harvest.forest
+                    : Harvest.colors(context).border,
                 width: 1.2,
               ),
               onSelected: (_) => onSelected(value),
@@ -723,7 +1021,7 @@ class StatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Color bg = Harvest.sage;
+    Color bg = Harvest.colors(context).paleLeaf;
     Color fg = Harvest.forest;
     if (warning) {
       bg = const Color(0xFFFDEFD9);
@@ -777,8 +1075,8 @@ class QuantityStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Container(
     decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border.all(color: Harvest.border, width: 1.2),
+      color: Harvest.colors(context).surface,
+      border: Border.all(color: Harvest.colors(context).border, width: 1.2),
       borderRadius: BorderRadius.circular(14),
     ),
     child: Row(
@@ -853,9 +1151,9 @@ class _ProductCardState extends State<ProductCard> {
       curve: Curves.easeOutCubic,
       child: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: Harvest.colors(context).surface,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: Harvest.border, width: 1),
+          border: Border.all(color: Harvest.colors(context).border, width: 1),
           boxShadow: Harvest.cardShadow,
         ),
         child: ClipRRect(
@@ -971,9 +1269,9 @@ class _ProductCardState extends State<ProductCard> {
                       store.farm(p.farmId).name,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 11,
-                        color: Harvest.muted,
+                        color: Harvest.colors(context).muted,
                       ),
                     ),
                     const Spacer(),
@@ -985,17 +1283,17 @@ class _ProductCardState extends State<ProductCard> {
                               children: [
                                 TextSpan(
                                   text: money(p.price),
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontWeight: FontWeight.w800,
                                     fontSize: 14,
-                                    color: Harvest.ink,
+                                    color: Harvest.colors(context).ink,
                                   ),
                                 ),
                                 TextSpan(
                                   text: ' /${p.unit}',
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 11,
-                                    color: Harvest.muted,
+                                    color: Harvest.colors(context).muted,
                                   ),
                                 ),
                               ],
@@ -1003,15 +1301,15 @@ class _ProductCardState extends State<ProductCard> {
                           ),
                         ),
                         if (store.role != UserRole.customer)
-                          const Icon(
+                          Icon(
                             Icons.arrow_forward_ios,
                             size: 14,
-                            color: Harvest.muted,
+                            color: Harvest.colors(context).muted,
                           )
                         else
                           Material(
                             color: p.stock == 0
-                                ? Harvest.border
+                                ? Harvest.colors(context).border
                                 : Harvest.forest,
                             borderRadius: BorderRadius.circular(10),
                             child: InkWell(
@@ -1098,9 +1396,9 @@ class FarmerCard extends StatelessWidget {
     width: 250,
     margin: const EdgeInsets.only(right: 14),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: Harvest.colors(context).surface,
       borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Harvest.border),
+      border: Border.all(color: Harvest.colors(context).border),
       boxShadow: Harvest.cardShadow,
     ),
     child: InkWell(
@@ -1133,8 +1431,8 @@ class FarmerCard extends StatelessWidget {
                         farm.location,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: Harvest.muted,
+                        style: TextStyle(
+                          color: Harvest.colors(context).muted,
                           fontSize: 11,
                         ),
                       ),
@@ -1148,9 +1446,9 @@ class FarmerCard extends StatelessWidget {
               farm.description,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 12,
-                color: Harvest.muted,
+                color: Harvest.colors(context).muted,
                 height: 1.4,
               ),
             ),
@@ -1163,31 +1461,31 @@ class FarmerCard extends StatelessWidget {
                     vertical: 4,
                   ),
                   decoration: BoxDecoration(
-                    color: Harvest.sage,
+                    color: Harvest.colors(context).paleLeaf,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     farm.market,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.w700,
-                      color: Harvest.forest,
+                      color: Harvest.colors(context).green,
                     ),
                   ),
                 ),
                 const Spacer(),
-                const Text(
+                Text(
                   'View farm',
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
-                    color: Harvest.forest,
+                    color: Harvest.colors(context).green,
                   ),
                 ),
-                const Icon(
+                Icon(
                   Icons.arrow_forward,
                   size: 14,
-                  color: Harvest.forest,
+                  color: Harvest.colors(context).green,
                 ),
               ],
             ),
@@ -1225,7 +1523,9 @@ class MenuRow extends StatelessWidget {
         width: 42,
         height: 42,
         decoration: BoxDecoration(
-          color: isDanger ? const Color(0xFFFBECE7) : Harvest.sage,
+          color: isDanger
+              ? const Color(0xFFFBECE7)
+              : Harvest.colors(context).paleLeaf,
           borderRadius: BorderRadius.circular(12),
         ),
         child: Icon(
@@ -1239,18 +1539,25 @@ class MenuRow extends StatelessWidget {
         style: TextStyle(
           fontSize: 14,
           fontWeight: FontWeight.w700,
-          color: isDanger ? Harvest.danger : Harvest.ink,
+          color: isDanger ? Harvest.danger : Harvest.colors(context).ink,
         ),
       ),
       subtitle: subtitle == null
           ? null
           : Text(
               subtitle!,
-              style: const TextStyle(fontSize: 12, color: Harvest.muted),
+              style: TextStyle(
+                fontSize: 12,
+                color: Harvest.colors(context).muted,
+              ),
             ),
       trailing:
           trailing ??
-          const Icon(Icons.arrow_forward_ios, size: 13, color: Harvest.muted),
+          Icon(
+            Icons.arrow_forward_ios,
+            size: 13,
+            color: Harvest.colors(context).muted,
+          ),
       onTap: onTap,
     ),
   );
@@ -1278,7 +1585,7 @@ class MetricCard extends StatelessWidget {
       color: dark ? Harvest.forest : Colors.white,
       borderRadius: BorderRadius.circular(20),
       border: Border.all(
-        color: dark ? Colors.transparent : Harvest.border,
+        color: dark ? Colors.transparent : Harvest.colors(context).border,
         width: 1,
       ),
       boxShadow: Harvest.cardShadow,
@@ -1293,7 +1600,9 @@ class MetricCard extends StatelessWidget {
               child: Text(
                 label,
                 style: TextStyle(
-                  color: dark ? Harvest.softSage : Harvest.muted,
+                  color: dark
+                      ? Harvest.colors(context).softSage
+                      : Harvest.colors(context).muted,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1308,7 +1617,7 @@ class MetricCard extends StatelessWidget {
           value,
           style: Harvest.editorial(
             28,
-            color: dark ? Colors.white : Harvest.ink,
+            color: dark ? Colors.white : Harvest.colors(context).ink,
           ),
         ),
         if (subtitle != null) ...[
@@ -1317,7 +1626,7 @@ class MetricCard extends StatelessWidget {
             subtitle!,
             style: TextStyle(
               fontSize: 11,
-              color: dark ? Colors.white70 : Harvest.muted,
+              color: dark ? Colors.white70 : Harvest.colors(context).muted,
             ),
           ),
         ],
@@ -1337,7 +1646,7 @@ class SkeletonBox extends StatelessWidget {
     width: width,
     height: height,
     decoration: BoxDecoration(
-      color: Harvest.canvas,
+      color: Harvest.colors(context).canvas,
       borderRadius: BorderRadius.circular(radius),
     ),
   );
@@ -1381,7 +1690,7 @@ class CircularNavButton extends StatelessWidget {
           height: 44,
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: Harvest.border),
+            border: Border.all(color: Harvest.colors(context).border),
             boxShadow: const [
               BoxShadow(
                 color: Color(0x08000000),
@@ -1393,7 +1702,11 @@ class CircularNavButton extends StatelessWidget {
           child: Stack(
             alignment: Alignment.center,
             children: [
-              Icon(icon, size: 20, color: iconColor ?? Harvest.ink),
+              Icon(
+                icon,
+                size: 20,
+                color: iconColor ?? Harvest.colors(context).ink,
+              ),
               if (showBadge || hasBadge)
                 Positioned(
                   top: 9,
@@ -1417,333 +1730,6 @@ class CircularNavButton extends StatelessWidget {
 }
 
 /// Weather & Farm Climate Card matching Reference Image 1 (Screen 1 & 3)
-class WeatherClimateCard extends StatelessWidget {
-  const WeatherClimateCard({
-    super.key,
-    this.location = 'Chateauneuf-du-Pape',
-    this.temperature = '+17°C',
-    this.highLow = 'H: 23°C   L: 14°C',
-    this.humidity = '40%',
-    this.precipitation = '5.1ml',
-    this.pressure = '450 hpa',
-    this.wind = '23m/s',
-    this.sunrise = '5:25 am',
-    this.sunset = '8:04 am',
-    this.onTap,
-  });
-
-  final String location, temperature, highLow;
-  final String humidity, precipitation, pressure, wind;
-  final String sunrise, sunset;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(28),
-      border: Border.all(color: Harvest.border.withValues(alpha: 0.8)),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x0D0E4D34),
-          blurRadius: 24,
-          offset: Offset(0, 8),
-        ),
-      ],
-    ),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(28),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // Top Location & Weather Icon Row
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(
-                        Icons.location_on_outlined,
-                        size: 16,
-                        color: Harvest.forest,
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        location,
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Harvest.ink,
-                        ),
-                      ),
-                    ],
-                  ),
-                  // Weather condition icon (Night clouds / Stars or Sun)
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE8F5EE),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Icon(
-                      Icons.nightlight_round,
-                      size: 20,
-                      color: Color(0xFFF59E0B),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-
-              // Temperature and High / Low
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.baseline,
-                textBaseline: TextBaseline.alphabetic,
-                children: [
-                  Text(
-                    temperature,
-                    style: const TextStyle(
-                      fontFamily: 'Manrope',
-                      fontSize: 36,
-                      fontWeight: FontWeight.w800,
-                      color: Harvest.ink,
-                      letterSpacing: -1.0,
-                    ),
-                  ),
-                  const Spacer(),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Text(
-                        highLow,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: Harvest.muted,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Divider(color: Color(0xFFF1F5F2), height: 1),
-              const SizedBox(height: 14),
-
-              // 4 Metrics Grid
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  _ClimateMetric(label: 'Humidity', value: humidity),
-                  _ClimateMetric(label: 'Precipitation', value: precipitation),
-                  _ClimateMetric(label: 'Pressure', value: pressure),
-                  _ClimateMetric(label: 'Wind', value: wind),
-                ],
-              ),
-              const SizedBox(height: 16),
-
-              // Sun Arc Trajectory
-              SizedBox(
-                height: 48,
-                width: double.infinity,
-                child: CustomPaint(
-                  painter: _SunArcPainter(),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            sunrise,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Harvest.ink,
-                            ),
-                          ),
-                          const Text(
-                            'Sunrise',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Harvest.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            sunset,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Harvest.ink,
-                            ),
-                          ),
-                          const Text(
-                            'Sunset',
-                            style: TextStyle(
-                              fontSize: 10,
-                              color: Harvest.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-class _ClimateMetric extends StatelessWidget {
-  const _ClimateMetric({required this.label, required this.value});
-  final String label, value;
-
-  @override
-  Widget build(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(
-        label,
-        style: const TextStyle(
-          fontSize: 10,
-          color: Harvest.muted,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      const SizedBox(height: 3),
-      Text(
-        value,
-        style: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w700,
-          color: Harvest.ink,
-        ),
-      ),
-    ],
-  );
-}
-
-class _SunArcPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final path = Path();
-    path.moveTo(60, size.height - 4);
-    path.quadraticBezierTo(
-      size.width / 2,
-      -4,
-      size.width - 60,
-      size.height - 4,
-    );
-
-    final paint = Paint()
-      ..color = const Color(0xFFF59E0B).withValues(alpha: 0.35)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6;
-
-    canvas.drawPath(path, paint);
-
-    // Glowing Sun Icon at 65% of arc
-    final sunOffset = Offset(size.width * 0.65, size.height * 0.22);
-    final glowPaint = Paint()
-      ..color = const Color(0xFFF59E0B).withValues(alpha: 0.25)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 6);
-    canvas.drawCircle(sunOffset, 8, glowPaint);
-
-    final sunPaint = Paint()..color = const Color(0xFFF59E0B);
-    canvas.drawCircle(sunOffset, 5, sunPaint);
-  }
-
-  @override
-  bool shouldRepaint(_SunArcPainter oldDelegate) => false;
-}
-
-/// Category Card Widget matching Reference Image 1 "Invest by Category"
-class InvestCategoryCard extends StatelessWidget {
-  const InvestCategoryCard({
-    super.key,
-    required this.title,
-    required this.icon,
-    required this.iconColor,
-    required this.iconBg,
-    this.onTap,
-  });
-
-  final String title;
-  final IconData icon;
-  final Color iconColor, iconBg;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Harvest.border),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x06000000),
-          blurRadius: 10,
-          offset: Offset(0, 3),
-        ),
-      ],
-    ),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: iconBg,
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(icon, size: 22, color: iconColor),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                title,
-                textAlign: TextAlign.center,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: Harvest.ink,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-/// Animated Growth Spline Area Chart matching Reference Image 2 (Screen 4)
 class GrowthAreaChart extends StatelessWidget {
   const GrowthAreaChart({
     super.key,
@@ -1769,13 +1755,12 @@ class GrowthAreaChart extends StatelessWidget {
         values[day] += o.total;
       }
     }
-    final max = values.fold<int>(0, (a, b) => a > b ? a : b);
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: Harvest.colors(context).surface,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Harvest.border),
+        border: Border.all(color: Harvest.colors(context).border),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1785,34 +1770,16 @@ class GrowthAreaChart extends StatelessWidget {
             style: TextStyle(fontWeight: FontWeight.w800),
           ),
           const SizedBox(height: 12),
-          if (max == 0)
-            const Text('No order value recorded.')
-          else
-            SizedBox(
-              height: 120,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  for (var i = 0; i < 7; i++)
-                    Expanded(
-                      child: Tooltip(
-                        message: money(values[i]),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: Container(
-                            height: 110 * values[i] / max + 1,
-                            color: Harvest.forest,
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+          AnimatedHarvestChart(
+            values: values.map((v) => v.toDouble()).toList(),
+          ),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Simulated value - oldest to newest',
-            style: TextStyle(fontSize: 11, color: Harvest.muted),
+            style: TextStyle(
+              fontSize: 11,
+              color: Harvest.colors(context).muted,
+            ),
           ),
         ],
       ),
@@ -1820,200 +1787,6 @@ class GrowthAreaChart extends StatelessWidget {
   }
 }
 
-class FarmDirectoryCard extends StatelessWidget {
-  const FarmDirectoryCard({
-    super.key,
-    required this.name,
-    required this.earnings,
-    required this.price,
-    required this.period,
-    required this.photo,
-    required this.onTap,
-  });
-
-  final String name, earnings, price, period, photo;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Harvest.border),
-      boxShadow: const [
-        BoxShadow(
-          color: Color(0x06000000),
-          blurRadius: 12,
-          offset: Offset(0, 3),
-        ),
-      ],
-    ),
-    child: Padding(
-      padding: const EdgeInsets.all(14),
-      child: Row(
-        children: [
-          // Farm thumbnail
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Photo(photo, width: 72, height: 72, radius: 16),
-          ),
-          const SizedBox(width: 14),
-
-          // Info Column
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        name,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: Harvest.ink,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    const Icon(
-                      Icons.more_horiz,
-                      color: Harvest.muted,
-                      size: 20,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                Row(
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Earnings',
-                          style: TextStyle(fontSize: 10, color: Harvest.muted),
-                        ),
-                        Text(
-                          price,
-                          style: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w700,
-                            color: Harvest.ink,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const Spacer(),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          earnings,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF10B981),
-                          ),
-                        ),
-                        Text(
-                          period,
-                          style: const TextStyle(
-                            fontSize: 10,
-                            color: Harvest.muted,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                SizedBox(
-                  width: double.infinity,
-                  height: 36,
-                  child: FilledButton(
-                    onPressed: onTap,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: Harvest.forest,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: EdgeInsets.zero,
-                    ),
-                    child: const Text(
-                      'Book Now',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
-/// Crop Note Tile matching Reference Image 1 (Screen 3)
-class CropNoteTile extends StatelessWidget {
-  const CropNoteTile({
-    super.key,
-    required this.photo,
-    required this.timestamp,
-    required this.note,
-    this.onTap,
-  });
-
-  final String photo, timestamp, note;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(bottom: 12),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(18),
-      border: Border.all(color: Harvest.border),
-    ),
-    child: ListTile(
-      onTap: onTap,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-      leading: ClipRRect(
-        borderRadius: BorderRadius.circular(12),
-        child: Photo(photo, width: 50, height: 50, radius: 12),
-      ),
-      title: Text(
-        timestamp,
-        style: const TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w800,
-          color: Harvest.ink,
-        ),
-      ),
-      subtitle: Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: Text(
-          note,
-          style: const TextStyle(
-            fontSize: 12,
-            color: Harvest.muted,
-            height: 1.35,
-          ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-      ),
-    ),
-  );
-}
-
-/// Shared loading, failure and pagination controls for the session's list cache.
 class DataStatusBar extends StatelessWidget {
   const DataStatusBar({super.key});
   @override
@@ -2025,34 +1798,35 @@ class DataStatusBar extends StatelessWidget {
         if (store.loading || store.busy) const LinearProgressIndicator(),
         if (store.error != null)
           Padding(
-            padding: const EdgeInsets.all(8),
-            child: Text(
-              store.error!,
-              style: const TextStyle(color: Harvest.danger),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    store.error!,
+                    style: const TextStyle(color: Harvest.danger, fontSize: 12),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: store.loading ? null : store.refresh,
+                  icon: const Icon(Icons.refresh_rounded, size: 16),
+                  label: const Text('Retry'),
+                ),
+              ],
             ),
           ),
-        Row(
-          children: [
-            Expanded(
-              child: Text(
-                store.loading
-                    ? 'Loading records…'
-                    : 'Live records · search covers loaded pages',
-                style: const TextStyle(fontSize: 11),
-              ),
-            ),
-            if (store.hasMore)
-              TextButton(
+        if (store.hasMore)
+          Align(
+            alignment: Alignment.centerRight,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: TextButton.icon(
                 onPressed: store.loading ? null : store.loadMore,
-                child: const Text('Load more'),
+                icon: const Icon(Icons.expand_more_rounded, size: 18),
+                label: const Text('Load more records'),
               ),
-            IconButton(
-              tooltip: 'Refresh records',
-              onPressed: store.loading ? null : store.refresh,
-              icon: const Icon(Icons.refresh, size: 18),
             ),
-          ],
-        ),
+          ),
       ],
     );
   }

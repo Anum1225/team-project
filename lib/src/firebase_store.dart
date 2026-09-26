@@ -1,9 +1,13 @@
+import 'notifications.dart';
 import 'dart:async';
+import 'dart:convert';
+
+import 'package:image/image.dart' as imaging;
+
+import 'spark_backend.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cloud_functions/cloud_functions.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import 'models.dart';
@@ -11,15 +15,7 @@ import 'store.dart';
 
 String serviceError(Object e) {
   debugPrint('HarvestHub service failure: $e');
-  if (e is FirebaseFunctionsException &&
-      [
-        'invalid-argument',
-        'failed-precondition',
-        'already-exists',
-        'not-found',
-      ].contains(e.code)) {
-    return e.message ?? 'Check the entered details.';
-  }
+  if (e is StateError) return e.message;
   if (e is FirebaseException) {
     return switch (e.code) {
       'permission-denied' =>
@@ -45,15 +41,9 @@ String serviceError(Object e) {
 
 /// One session-owned data adapter. Widgets never construct Firestore queries.
 class FirebaseStore extends HarvestStore {
-  FirebaseStore({
-    FirebaseAuth? auth,
-    FirebaseFirestore? firestore,
-    FirebaseFunctions? functions,
-    FirebaseStorage? storage,
-  }) : _auth = auth ?? FirebaseAuth.instance,
-       _db = firestore ?? FirebaseFirestore.instance,
-       _functions = functions ?? FirebaseFunctions.instance,
-       _storage = storage ?? FirebaseStorage.instance {
+  FirebaseStore({FirebaseAuth? auth, FirebaseFirestore? firestore})
+    : _auth = auth ?? FirebaseAuth.instance,
+      _db = firestore ?? FirebaseFirestore.instance {
     categories.clear();
     loading = true;
     _authSubscription = _auth.authStateChanges().listen(
@@ -63,8 +53,6 @@ class FirebaseStore extends HarvestStore {
   }
   final FirebaseAuth _auth;
   final FirebaseFirestore _db;
-  final FirebaseFunctions _functions;
-  final FirebaseStorage _storage;
   StreamSubscription<User?>? _authSubscription;
   StreamSubscription<DocumentSnapshot<Map<String, dynamic>>>?
   _profileSubscription;
@@ -93,7 +81,8 @@ class FirebaseStore extends HarvestStore {
       farms.where((f) => f.id == id).firstOrNull ??
       Farm(
         id: id,
-        name: 'Farm $id',
+        name: 'Farm details unavailable',
+        active: false,
         owner: '',
         location: '',
         market: '',
@@ -124,7 +113,10 @@ class FirebaseStore extends HarvestStore {
     categoryCounts.clear();
     basket.clear();
     saved.clear();
+    followed.clear();
+    pickupSlots.clear();
     recentSearches.clear();
+    feedback.clear();
     report = null;
     _more.clear();
     _checkoutKey = null;
@@ -175,6 +167,7 @@ class FirebaseStore extends HarvestStore {
         role = a.role;
         if (reload) {
           await refresh();
+          unawaited(HarvestNotifications.restore().catchError((Object _) {}));
         } else {
           notifyListeners();
         }
@@ -243,7 +236,6 @@ class FirebaseStore extends HarvestStore {
     Query<Map<String, dynamic>> pq = _db
         .collection('products')
         .where('archived', isEqualTo: false);
-    if (role == UserRole.farmer) pq = pq.where('farmId', isEqualTo: uid);
     watch('products', pq.orderBy(FieldPath.documentId), (d) {
       products
         ..clear()
@@ -287,6 +279,63 @@ class FirebaseStore extends HarvestStore {
           }),
         );
     });
+    if (role == UserRole.customer) {
+      _subscriptions.add(
+        _db.doc('users/$uid/private/preferences').snapshots().listen((doc) {
+          if (generation != _generation || !authenticated) return;
+          if (doc.exists) {
+            final d = doc.data();
+            if (d != null) {
+              final s = (d['saved'] as List?)?.cast<String>() ?? [];
+              final f = (d['followed'] as List?)?.cast<String>() ?? [];
+              saved
+                ..clear()
+                ..addAll(s);
+              followed
+                ..clear()
+                ..addAll(f);
+              notifyListeners();
+            }
+          }
+        }, onError: _error),
+      );
+      _subscriptions.add(
+        _db.collection('users/$uid/pickups').snapshots().listen((snap) {
+          if (generation != _generation || !authenticated) return;
+          pickupSlots.clear();
+          for (final doc in snap.docs) {
+            final slot = doc.data()['slot'] as String?;
+            if (slot != null && slot.isNotEmpty) {
+              pickupSlots[doc.id] = slot;
+            }
+          }
+          notifyListeners();
+        }, onError: _error),
+      );
+    }
+    if (role == UserRole.admin) {
+      pending.add('feedback');
+      watch(
+        'feedback',
+        _db.collection('feedback').orderBy('createdAt', descending: true),
+        (d) {
+          feedback
+            ..clear()
+            ..addAll(
+              d.map((x) {
+                final data = x.data();
+                return FeedbackItem(
+                  id: x.id,
+                  email: data['email'] as String? ?? 'Anonymous',
+                  message: data['message'] as String? ?? '',
+                  date: _date(data['createdAt']) ?? DateTime.now(),
+                  read: data['read'] == true,
+                );
+              }),
+            );
+        },
+      );
+    }
     if (role != UserRole.customer) unawaited(loadReport(36500));
   }
 
@@ -319,16 +368,11 @@ class FirebaseStore extends HarvestStore {
     String name,
     Map<String, dynamic> data,
   ) async {
-    final response = await _functions.httpsCallable(name).call(data);
-    return Map<String, dynamic>.from(response.data as Map);
+    return SparkBackend(_db, _auth).call(name, data);
   }
 
   @override
-  Future<String?> signIn(
-    String email,
-    String password,
-    UserRole selected,
-  ) async {
+  Future<String?> signIn(String email, String password) async {
     _authenticating = true;
     try {
       final result = await _auth.signInWithEmailAndPassword(
@@ -338,11 +382,10 @@ class FirebaseStore extends HarvestStore {
       final doc = await _db
           .doc('users/${result.user!.uid}')
           .get(const GetOptions(source: Source.server));
-      if (!doc.exists ||
-          readAccount(doc).role != selected ||
-          !readAccount(doc).active) {
+      final account = doc.exists ? readAccount(doc) : null;
+      if (!doc.exists || account == null || !account.active) {
         await _auth.signOut();
-        return 'This account cannot access the selected portal.';
+        return 'This account is unavailable or has been suspended.';
       }
       return null;
     } catch (e) {
@@ -389,6 +432,11 @@ class FirebaseStore extends HarvestStore {
 
   @override
   Future<void> signOut() async {
+    try {
+      await HarvestNotifications.unregister();
+    } catch (_) {
+      /* Sign-out still proceeds offline. */
+    }
     ++_generation;
     _account = null;
     _clear();
@@ -434,6 +482,7 @@ class FirebaseStore extends HarvestStore {
     'name': value.name,
     'phone': value.phone,
     'address': value.address,
+    'avatar': value.avatar,
   });
   @override
   Future<String?> saveFarm(Farm value) => _mutate('saveFarm', {
@@ -442,6 +491,9 @@ class FirebaseStore extends HarvestStore {
     'location': value.location,
     'market': value.market,
     'description': value.description,
+    'pickupSlots': value.pickupSlots,
+    'lat': value.latitude,
+    'lng': value.longitude,
   });
   @override
   Future<String?> deleteProduct(Product value) =>
@@ -452,31 +504,10 @@ class FirebaseStore extends HarvestStore {
   @override
   Future<String?> saveProduct(Product value) => _operation(() async {
     String url = value.image;
-    Reference? upload;
     if (value.photo != null) {
-      final bytes = value.photo!;
-      final png =
-          bytes.length > 8 &&
-          bytes[0] == 137 &&
-          bytes[1] == 80 &&
-          bytes[2] == 78 &&
-          bytes[3] == 71;
-      final jpeg =
-          bytes.length > 3 &&
-          bytes[0] == 255 &&
-          bytes[1] == 216 &&
-          bytes[2] == 255;
-      if ((!png && !jpeg) || bytes.length > 8 * 1024 * 1024) {
-        throw FirebaseException(plugin: 'storage', code: 'invalid-argument');
-      }
-      upload = _storage.ref(
-        'productImages/${_auth.currentUser!.uid}/${value.id}/${DateTime.now().microsecondsSinceEpoch}.${png ? 'png' : 'jpg'}',
-      );
-      await upload.putData(
-        bytes,
-        SettableMetadata(contentType: png ? 'image/png' : 'image/jpeg'),
-      );
-      url = await upload.getDownloadURL();
+      final job = await compute(_compressPhoto, value.photo!);
+      if (job.error != null) throw StateError(job.error!);
+      url = job.dataUrl!;
     }
     try {
       await _call('mutate', {
@@ -494,8 +525,7 @@ class FirebaseStore extends HarvestStore {
         },
       });
     } catch (e) {
-      // A timeout can mean the transaction committed. Keep the upload for retry;
-      // deleting it here could break a successfully saved product or order snapshot.
+      // Preserve the form on a failed transaction so it can be retried.
       rethrow;
     }
     if (role != UserRole.customer) unawaited(loadReport(36500));
@@ -520,7 +550,84 @@ class FirebaseStore extends HarvestStore {
   }
 
   @override
-  Future<List<HarvestOrder>> checkout(String address) async {
+  void toggleSaved(String id) {
+    if (role != UserRole.customer || !authenticated) return;
+    if (saved.contains(id)) {
+      saved.remove(id);
+    } else {
+      saved.add(id);
+    }
+    notifyListeners();
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      unawaited(
+        _db
+            .doc('users/$uid/private/preferences')
+            .set({
+              'saved': saved.toList(),
+              'followed': followed.toList(),
+            }, SetOptions(merge: true))
+            .catchError((Object e) {
+              _error(e);
+            }),
+      );
+    }
+  }
+
+  @override
+  void toggleFollowed(String farmId) {
+    if (role != UserRole.customer || !authenticated) return;
+    if (followed.contains(farmId)) {
+      followed.remove(farmId);
+    } else {
+      followed.add(farmId);
+    }
+    notifyListeners();
+    final uid = _auth.currentUser?.uid;
+    if (uid != null) {
+      unawaited(
+        _db
+            .doc('users/$uid/private/preferences')
+            .set({
+              'saved': saved.toList(),
+              'followed': followed.toList(),
+            }, SetOptions(merge: true))
+            .catchError((Object e) {
+              _error(e);
+            }),
+      );
+    }
+  }
+
+  @override
+  Future<String?> updatePickupSlot(String orderId, String? slot) async {
+    if (role != UserRole.customer || !authenticated) {
+      return 'Only customers manage pickup bookings.';
+    }
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return 'Please sign in.';
+    try {
+      await _db.doc('users/$uid/pickups/$orderId').set({
+        'slot': slot == null || slot.trim().isEmpty ? null : slot.trim(),
+        'updatedAt': FieldValue.serverTimestamp(),
+      });
+      if (slot == null || slot.trim().isEmpty) {
+        pickupSlots.remove(orderId);
+      } else {
+        pickupSlots[orderId] = slot.trim();
+      }
+      notifyListeners();
+      return null;
+    } catch (e) {
+      return serviceError(e);
+    }
+  }
+
+  @override
+  Future<List<HarvestOrder>> checkout(
+    String address, {
+    String? pickupSlot,
+  }) async {
     if (busy) throw StateError('An order is already being submitted.');
     busy = true;
     notifyListeners();
@@ -529,13 +636,21 @@ class FirebaseStore extends HarvestStore {
       final result = await _call('checkout', {
         'requestId': _checkoutKey,
         'address': address,
+        'pickupSlot': pickupSlot?.trim() ?? '',
         'items': basket.entries
             .map((x) => {'id': x.key, 'quantity': x.value})
             .toList(),
       });
+      final orderIds = (result['orderIds'] as List).cast<String>();
       final docs = await Future.wait(
-        (result['orderIds'] as List).map((id) => _db.doc('orders/$id').get()),
+        orderIds.map((id) => _db.doc('orders/$id').get()),
       );
+      if (pickupSlot != null && pickupSlot.trim().isNotEmpty) {
+        for (final id in orderIds) {
+          pickupSlots[id] = pickupSlot.trim();
+        }
+        notifyListeners();
+      }
       basket.clear();
       _checkoutKey = null;
       return docs.map(readOrder).toList();
@@ -577,6 +692,33 @@ class FirebaseStore extends HarvestStore {
   }
 }
 
+/// Runs in a worker isolate: decode/copyResize/encodeJpg are CPU-heavy and
+/// must never touch the UI thread.
+({String? dataUrl, String? error}) _compressPhoto(Uint8List raw) {
+  final decoded = imaging.decodeImage(raw);
+  if (decoded == null) {
+    return (dataUrl: null, error: 'Choose a JPEG or PNG image.');
+  }
+  final resized = imaging.copyResize(
+    decoded,
+    width: decoded.width > 700 ? 700 : decoded.width,
+  );
+  var bytes = imaging.encodeJpg(resized, quality: 70);
+  if (bytes.length > 100000) {
+    bytes = imaging.encodeJpg(
+      imaging.copyResize(resized, width: 400),
+      quality: 50,
+    );
+  }
+  if (bytes.length > 100000) {
+    return (dataUrl: null, error: 'Choose a smaller image.');
+  }
+  return (
+    dataUrl: 'data:image/jpeg;base64,${base64Encode(bytes)}',
+    error: null,
+  );
+}
+
 String _s(Map<String, dynamic> d, String k, [String fallback = '']) =>
     d[k] is String ? d[k] as String : fallback;
 int _n(Map<String, dynamic> d, String k) {
@@ -599,6 +741,7 @@ Account readAccount(DocumentSnapshot<Map<String, dynamic>> doc) {
     role: r,
     phone: _s(d, 'phone'),
     address: _s(d, 'address'),
+    avatar: _s(d, 'avatar'),
     active: d['active'] == true,
     createdAt: _date(d['createdAt']),
   );
@@ -614,6 +757,10 @@ Farm readFarm(DocumentSnapshot<Map<String, dynamic>> doc) {
     market: _s(d, 'market'),
     description: _s(d, 'description'),
     image: _s(d, 'image'),
+    pickupSlots: (d['pickupSlots'] as List? ?? []).whereType<String>().toList(),
+    latitude: (d['lat'] as num?)?.toDouble(),
+    longitude: (d['lng'] as num?)?.toDouble(),
+    active: d['active'] == true,
   );
 }
 

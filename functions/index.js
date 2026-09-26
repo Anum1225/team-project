@@ -165,7 +165,7 @@ exports.platformReport = callable(async (uid, d) => {
   const counts = { products: await count(p.where('archived','==',false)), outOfStock: await count(p.where('archived','==',false).where('stock','==',0)), categories: await count(db.collection('categories')) };
   if (a.role === 'admin') {
     counts.customers = await count(db.collection('users').where('role','==','customer'));
-    counts.farmers = await count(db.collection('users').where('role','==','farmer'));
+    counts.farmerCount = await count(db.collection('users').where('role','==','farmer'));
     counts.activeFarmers = await count(db.collection('users').where('role','==','farmer').where('active','==',true));
   }
   // Orders snapshot the market at checkout. No per-order farm reads are needed.

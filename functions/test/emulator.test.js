@@ -2,7 +2,7 @@ const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const { initializeTestEnvironment, assertFails, assertSucceeds } = require('@firebase/rules-unit-testing');
-const { doc, getDoc, setDoc } = require('firebase/firestore');
+const { doc, getDoc, setDoc, writeBatch, serverTimestamp } = require('firebase/firestore');
 const { ref, uploadBytes, deleteObject } = require('firebase/storage');
 const enabled = !!process.env.FIRESTORE_EMULATOR_HOST;
 const projectId = 'demo-harvesthub';
@@ -38,6 +38,20 @@ test('rules deny impersonation, direct writes and private reads',{skip:!enabled}
   await assertFails(getDoc(doc(env.unauthenticatedContext().firestore(),`users/${tokens.admin.uid}`)));
   await assertSucceeds(getDoc(doc(admin,`users/${tokens.customer.uid}`)));
   await assertFails(setDoc(doc(admin,'products/direct-write'),{stock:100}));
+});
+test('existing self-registration and preference rules remain compatible without role escalation',{skip:!enabled},async()=> {
+  const customer=env.authenticatedContext('new-customer',{email:'new-customer@test.local'}).firestore();
+  const profile={name:'New customer',email:'new-customer@test.local',role:'customer',phone:'',address:'',active:true,createdAt:serverTimestamp()};
+  await assertFails(setDoc(doc(customer,'users/new-customer'),{...profile,role:'admin'}));
+  await assertFails(setDoc(doc(customer,'users/someone-else'),profile));
+  await assertSucceeds(setDoc(doc(customer,'users/new-customer'),profile));
+  await assertSucceeds(setDoc(doc(customer,'users/new-customer/private/preferences'),{saved:['test-product'],followed:[],readNotices:[]}));
+  await assertFails(setDoc(doc(customer,'users/new-customer/private/preferences'),{role:'admin'}));
+  const farmer=env.authenticatedContext('new-farmer',{email:'new-farmer@test.local'}).firestore();
+  const batch=writeBatch(farmer);
+  batch.set(doc(farmer,'users/new-farmer'),{...profile,name:'New farmer',email:'new-farmer@test.local',role:'farmer'});
+  batch.set(doc(farmer,'farms/new-farmer'),{name:'New farmer',owner:'new-farmer',location:'',market:'',description:'',image:'',active:true,createdAt:serverTimestamp()});
+  await assertSucceeds(batch.commit());
 });
 test('authentication accepts correct credentials and rejects a wrong password',{skip:!enabled},async()=> {
   for(const password of ['wrong-password','emulator-only-password']) {

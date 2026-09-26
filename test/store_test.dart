@@ -3,6 +3,18 @@ import 'package:untitled/src/models.dart';
 import 'package:untitled/src/preview_store.dart';
 
 void main() async {
+  test('shared login detects each existing account role', () async {
+    final store = PreviewStore();
+    for (final role in UserRole.values) {
+      final account = store.accounts.firstWhere((a) => a.role == role);
+      expect(await store.signIn(account.email, 'preview-password'), isNull);
+      expect(store.role, role);
+    }
+    expect(
+      await store.signIn('unknown@example.com', 'preview-password'),
+      isNotNull,
+    );
+  });
   test(
     'stock limits reject zero stock and keep failed checkout atomic',
     () async {

@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+version: 1.0.1+2
 
 environment:
   sdk: ^3.13.0
@@ -35,11 +35,19 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
   firebase_core: ^4.15.0
+  image: ^4.5.4
   image_picker: ^1.2.3
   firebase_auth: ^6.7.0
   cloud_firestore: ^6.10.0
-  cloud_functions: ^6.5.0
-  firebase_storage: ^13.6.0
+  shared_preferences: ^2.5.3
+  flutter_map: ^8.3.2
+  latlong2: ^0.10.1
+  geolocator: ^14.0.3
+  url_launcher: ^6.3.2
+  path_provider_android: 2.2.20
+  firebase_ai: ^4.0.0
+  firebase_app_check: ^0.4.8
+  firebase_messaging: ^16.7.0
 
 dev_dependencies:
   flutter_test:
@@ -74,6 +82,12 @@ flutter:
   assets:
     - assets/images/
   fonts:
+    - family: Outfit
+      fonts:
+        - asset: assets/fonts/Outfit.ttf
+    - family: Fraunces
+      fonts:
+        - asset: assets/fonts/Fraunces.ttf
     - family: Manrope
       fonts:
         - asset: assets/fonts/Manrope.ttf

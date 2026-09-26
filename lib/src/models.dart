@@ -32,11 +32,12 @@ class Account {
     required this.role,
     this.phone = '',
     this.address = '',
+    this.avatar = '',
     this.active = true,
     this.createdAt,
   });
   final String id;
-  String name, email, phone, address;
+  String name, email, phone, address, avatar;
   final UserRole role;
   bool active;
   final DateTime? createdAt;
@@ -51,7 +52,14 @@ class Farm {
     required this.market,
     required this.description,
     required this.image,
+    this.pickupSlots = const [],
+    this.latitude,
+    this.longitude,
+    this.active = true,
   });
+  final List<String> pickupSlots;
+  final double? latitude, longitude;
+  final bool active;
   final String id, owner;
   String name, location, market, description, image;
 }
@@ -138,4 +146,19 @@ String dateLabel(DateTime date) {
     'Dec',
   ];
   return '${date.day} ${months[date.month - 1]} ${date.year}';
+}
+
+class FeedbackItem {
+  const FeedbackItem({
+    required this.id,
+    required this.email,
+    required this.message,
+    required this.date,
+    this.read = false,
+  });
+  final String id;
+  final String email;
+  final String message;
+  final DateTime date;
+  final bool read;
 }

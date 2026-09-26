@@ -52,3 +52,10 @@ app.*.map.json
 .firebase/
 *-debug.log
 
+
+# Local secrets
+.env
+.env.*
+!.env.example
+*.secrets.json
+/android/build/

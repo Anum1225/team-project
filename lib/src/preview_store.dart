@@ -7,7 +7,16 @@ class PreviewStore extends HarvestStore {
     if (seed) _seed();
   }
   void _seed() {
-    categories.addAll(['Vegetables','Fruits','Dairy','Grains','Herbs','Organic','Pulses','Pantry']);
+    categories.addAll([
+      'Vegetables',
+      'Fruits',
+      'Dairy',
+      'Grains',
+      'Herbs',
+      'Organic',
+      'Pulses',
+      'Pantry',
+    ]);
     accounts.addAll([
       Account(
         id: 'c1',
@@ -26,18 +35,19 @@ class PreviewStore extends HarvestStore {
       ),
       Account(
         id: 'f1',
-        name: 'Ahmed Raza',
-        email: 'ahmed@example.com',
+        name: 'Marcus Rivera',
+        email: 'marcus@example.com',
         role: UserRole.farmer,
         phone: '0300 7654321',
-        address: 'Malir, Karachi',
+        address: 'Stall #14 • Greenwood Market',
       ),
       Account(
         id: 'f2',
-        name: 'Sara Noor',
-        email: 'sara@example.com',
+        name: 'Sunny Brook',
+        email: 'sunny@example.com',
         role: UserRole.farmer,
-        address: 'Gadap, Karachi',
+        phone: '0300 1234567',
+        address: 'Sunny Brook Farm, 2.1 mi',
       ),
       Account(
         id: 'a1',
@@ -49,21 +59,52 @@ class PreviewStore extends HarvestStore {
     farms.addAll([
       Farm(
         id: 'green',
-        name: 'Green Valley Farm',
+        name: 'Greenwood Organic Farm',
         owner: 'f1',
-        location: 'Malir, Karachi',
-        market: 'Sunday Farmers Market',
-        description: 'A family farm with a simple belief: good food begins with care. We grow small batches, follow the seasons, and love sharing what comes out of our soil.',
-        image: 'farm',
+        location: 'Stall #14 • Greenwood Market',
+        market: 'Greenwood Farmers Market',
+        description:
+            'Marcus Rivera · 8 yrs regenerative certified. Growing vine-ripened heirloom beefsteaks and fresh baby greens.',
+        image: 'farmer_marcus',
       ),
       Farm(
         id: 'sun',
-        name: 'Sunfield Organics',
+        name: 'Sunny Brook Farm',
         owner: 'f2',
-        location: 'Gadap, Karachi',
-        market: 'Community Market',
-        description: 'Seasonal fruit and pantry favourites from our family to yours. Get to know the people behind your everyday ingredients.',
-        image: 'market',
+        location: '2.1 mi away · Greenwood Market',
+        market: 'Greenwood Farmers Market',
+        description:
+            'Certified organic vegetables, crisp greens and heritage berries harvested fresh daily.',
+        image: 'farmer_sunny',
+      ),
+      Farm(
+        id: 'highland',
+        name: 'Highland Orchards',
+        owner: 'f1',
+        location: '3.8 mi away · Hillside',
+        market: 'Greenwood Farmers Market',
+        description:
+            'Fresh crisp Honeycrisp apples, Asian pears, and orchard cider.',
+        image: 'farm',
+      ),
+      Farm(
+        id: 'golden',
+        name: 'Golden Hen Homestead',
+        owner: 'f2',
+        location: '1.4 mi away · Valley Pastures',
+        market: 'Greenwood Farmers Market',
+        description: 'Pasture-raised farm eggs from happy, roaming hens.',
+        image: 'eggs',
+      ),
+      Farm(
+        id: 'willow',
+        name: 'Willow Creek Farms',
+        owner: 'f1',
+        location: '2.9 mi away · Riverside',
+        market: 'Greenwood Farmers Market',
+        description:
+            'Sweet summer corn, crisp melons and wholesome farm harvests.',
+        image: 'corn',
       ),
     ]);
     products.addAll([
@@ -75,7 +116,92 @@ class PreviewStore extends HarvestStore {
         price: 18000,
         stock: 24,
         image: 'tomatoes',
-        description: 'Bright, juicy tomatoes with a beautifully balanced sweetness. A kitchen essential for a slow-cooked sauce or a simple seasonal salad.',
+        description:
+            'Bright, juicy tomatoes with a beautifully balanced sweetness. A kitchen essential for a slow-cooked sauce or a simple seasonal salad.',
+      ),
+      Product(
+        id: 'san_marzano',
+        name: 'San Marzano Heirlooms',
+        category: 'Vegetables',
+        farmId: 'sun',
+        price: 18000,
+        stock: 24,
+        image: 'tomatoes',
+        unit: '1 lb',
+        description:
+            'Plump, deeply flavorful Italian San Marzano heirloom crop, harvested at peak sweetness for pasta and salads.',
+      ),
+      Product(
+        id: 'honeycrisp',
+        name: 'Crisp Honeycrisp Apples',
+        category: 'Fruits',
+        farmId: 'highland',
+        price: 16000,
+        stock: 45,
+        image: 'pears',
+        unit: '1 lb',
+        description:
+            'Crisp, sweet, and bursting with orchard juice, harvested early this morning.',
+      ),
+      Product(
+        id: 'eggs',
+        name: 'Pasture Raised Eggs',
+        category: 'Dairy & Eggs',
+        farmId: 'golden',
+        price: 25000,
+        stock: 12,
+        image: 'eggs',
+        unit: '1 doz',
+        description:
+            'Rich golden yolks from pasture-raised hens grazing in sunshine.',
+      ),
+      Product(
+        id: 'corn',
+        name: 'Sweet Summer Corn',
+        category: 'Vegetables',
+        farmId: 'willow',
+        price: 18000,
+        stock: 30,
+        image: 'corn',
+        unit: '6 ears',
+        description:
+            'Tender, sweet summer corn on the cob, freshly plucked from the stalks.',
+      ),
+      Product(
+        id: 'spinach',
+        name: 'Baby Spinach (8oz)',
+        category: 'Vegetables',
+        farmId: 'green',
+        price: 15000,
+        stock: 3,
+        image: 'spinach',
+        unit: '8 oz',
+        description:
+            'Tender baby spinach leaves, triple washed and sealed in eco packaging.',
+      ),
+      Product(
+        id: 'peaches',
+        name: 'Yellow Peaches',
+        category: 'Fruits',
+        farmId: 'green',
+        price: 14000,
+        stock: 0,
+        image: 'peaches',
+        unit: '1 lb',
+        description:
+            'Sun-drenched yellow peaches from our south orchard slope. Sold out for today.',
+      ),
+      Product(
+        id: 'beefsteak',
+        name: 'Heirloom Beefsteak',
+        category: 'Vegetables',
+        farmId: 'green',
+        price: 18000,
+        stock: 18,
+        image: 'tomatoes',
+        unit: '1 lb',
+        description:
+            'Giant heirloom beefsteak tomatoes with rich, traditional summer garden flavor.',
       ),
       Product(
         id: 'berry',
@@ -86,7 +212,8 @@ class PreviewStore extends HarvestStore {
         stock: 8,
         image: 'strawberries',
         unit: '250 g',
-        description: 'A little sweetness, straight from the field. Enjoy these strawberries on their own, over breakfast, or folded into your favourite dessert.',
+        description:
+            'A little sweetness, straight from the field. Enjoy these strawberries on their own, over breakfast, or folded into your favourite dessert.',
       ),
       Product(
         id: 'carrot',
@@ -96,7 +223,8 @@ class PreviewStore extends HarvestStore {
         price: 14000,
         stock: 4,
         image: 'farm',
-        description: 'Earthy, crisp carrots, wonderful roasted or shaved into a crunchy salad. Wash well before enjoying.',
+        description:
+            'Earthy, crisp carrots, wonderful roasted or shaved into a crunchy salad. Wash well before enjoying.',
       ),
       Product(
         id: 'potato',
@@ -106,7 +234,8 @@ class PreviewStore extends HarvestStore {
         price: 12000,
         stock: 32,
         image: 'potatoes',
-        description: 'Versatile, comforting potatoes for your everyday table. Bake, mash, or roast until golden.',
+        description:
+            'Versatile, comforting potatoes for your everyday table. Bake, mash, or roast until golden.',
       ),
       Product(
         id: 'honey',
@@ -117,7 +246,8 @@ class PreviewStore extends HarvestStore {
         stock: 6,
         image: 'honey',
         unit: '350 g',
-        description: 'A rich floral honey for tea, toast, and slow weekend breakfasts. Store sealed in a cool, dry place.',
+        description:
+            'A rich floral honey for tea, toast, and slow weekend breakfasts. Store sealed in a cool, dry place.',
       ),
       Product(
         id: 'berry2',
@@ -128,7 +258,8 @@ class PreviewStore extends HarvestStore {
         stock: 0,
         image: 'strawberries',
         unit: '1 kg',
-        description: 'A generous box for sharing. This harvest has sold out; explore the farm for other available produce.',
+        description:
+            'A generous box for sharing. This harvest has sold out; explore the farm for other available produce.',
       ),
     ]);
     final now = DateTime.now();
@@ -164,4 +295,81 @@ class PreviewStore extends HarvestStore {
       );
     }
   }
+
+  @override
+  Future<String?> signIn(String email, String password) async {
+    final clean = email.trim().toLowerCase();
+    Account? match;
+    for (final a in accounts) {
+      if (a.email.toLowerCase() == clean) {
+        match = a;
+        break;
+      }
+    }
+    if (match != null) {
+      if (!match.active) {
+        return 'This account is suspended.';
+      }
+      role = match.role;
+      notifyListeners();
+      return null;
+    }
+    return 'Invalid credentials or user not found.';
+  }
+
+  @override
+  Future<String?> register(
+    String email,
+    String password,
+    String name,
+    String phone,
+    String address,
+    UserRole selected,
+  ) async {
+    if (selected == UserRole.admin) {
+      return 'Administrator accounts cannot be self-registered.';
+    }
+    final clean = email.trim().toLowerCase();
+    if (accounts.any((a) => a.email.toLowerCase() == clean)) {
+      return 'An account already uses this email. Please sign in.';
+    }
+    final uid = 'u-${DateTime.now().millisecondsSinceEpoch}';
+    final newAcc = Account(
+      id: uid,
+      name: name.trim().isEmpty ? 'New User' : name.trim(),
+      email: email.trim(),
+      role: selected,
+      phone: phone.trim(),
+      address: address.trim(),
+    );
+    accounts.add(newAcc);
+    if (selected == UserRole.farmer) {
+      farms.add(
+        Farm(
+          id: uid,
+          name: '${newAcc.name} Farm',
+          owner: uid,
+          location: address.trim(),
+          market: 'Local Market',
+          description: 'Local producer fresh harvests.',
+          image: 'farm',
+        ),
+      );
+    }
+    role = selected;
+    notifyListeners();
+    return null;
+  }
+
+  @override
+  Future<String?> resetPassword(String email) async {
+    if (!email.contains('@')) return 'Enter a valid email address.';
+    return null;
+  }
+
+  @override
+  Future<String?> changePassword(String old, String password) async => null;
+
+  @override
+  Future<String?> sendFeedback(String email, String message) async => null;
 }

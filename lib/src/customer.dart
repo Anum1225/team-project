@@ -1,4 +1,8 @@
+import 'notifications.dart';
 import 'dart:async';
+import 'assistant_robot.dart';
+import 'location_picker.dart';
+import 'package:geolocator/geolocator.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,11 +10,13 @@ import 'package:flutter/services.dart';
 import 'components.dart';
 import 'models.dart';
 import 'orders.dart';
+import 'profile.dart';
 import 'store.dart';
 import 'theme.dart';
 
 class BasketAction extends StatelessWidget {
-  const BasketAction({super.key});
+  const BasketAction({super.key, this.floating = false});
+  final bool floating;
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +25,15 @@ class BasketAction extends StatelessWidget {
 
     return IconButton(
       tooltip: 'Your basket',
+      style: floating
+          ? IconButton.styleFrom(
+              fixedSize: const Size(82, 82),
+              backgroundColor: Harvest.colors(context).forest,
+              foregroundColor: Colors.white,
+              elevation: 8,
+              shadowColor: const Color(0x55305236),
+            )
+          : null,
       onPressed: () => openPage(context, const BasketScreen()),
       icon: Badge(
         isLabelVisible: store.basketCount > 0,
@@ -27,13 +42,13 @@ class BasketAction extends StatelessWidget {
           style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
         ),
         backgroundColor: Harvest.forest,
-        child: const Icon(Icons.shopping_bag_outlined, size: 22),
+        child: Icon(Icons.shopping_bag_outlined, size: floating ? 32 : 22),
       ),
     );
   }
 }
 
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
     required this.onExplore,
@@ -44,682 +59,416 @@ class HomeScreen extends StatelessWidget {
   final VoidCallback onExplore, onAssistant, onProfile;
 
   @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  String _category = 'All';
+
+  @override
   Widget build(BuildContext context) {
     final store = HarvestScope.of(context);
-    final name = store.account.name.split(' ').first;
-    final featuredProducts = store.visibleProducts.take(4).toList();
-    final farms = store.farms;
-    final recentOrders = store.visibleOrders.take(1).toList();
+    final palette = Harvest.colors(context);
+    final categories = ['All', ...store.categories];
+    final available = store.products
+        .where(
+          (product) => product.stock > 0 && store.farm(product.farmId).active,
+        )
+        .toList();
+    final products =
+        (_category == 'All'
+              ? available
+              : available
+                    .where((product) => product.category == _category)
+                    .toList())
+          ..sort(
+            (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+          );
+    final address = store.account.address.trim();
+    final featuredFarms = store.farms.where((f) => f.active).take(4).toList();
 
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        // 1. Deep Emerald Top Section matching Reference Image 1 (Screen 1)
-        Container(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 24),
-          decoration: const BoxDecoration(
-            gradient: Harvest.forestGradient,
-            borderRadius: BorderRadius.only(
-              bottomLeft: Radius.circular(32),
-              bottomRight: Radius.circular(32),
-            ),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+    return Scaffold(
+      backgroundColor: palette.canvas,
+      body: SafeArea(
+        child: RefreshIndicator(
+          onRefresh: store.refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.fromLTRB(0, 4, 0, 30),
             children: [
-              // Greeting & Action Bar Row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Row(
-                          children: [
-                            Text(
-                              'Hello, ',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w400,
-                              ),
-                            ),
-                            Text(
-                              'Good Morning',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        InkWell(
-                          borderRadius: BorderRadius.circular(12),
-                          onTap: () {
-                            openPage(context, const TodaysWeatherScreen());
-                          },
-                          child: const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 2),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Sunday, 01 Dec 2024',
-                                  style: TextStyle(
-                                    color: Color(0xFFD1E7DD),
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                SizedBox(width: 4),
-                                Icon(
-                                  Icons.keyboard_arrow_down,
-                                  color: Color(0xFFD1E7DD),
-                                  size: 16,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    tooltip: 'Saved items',
-                    onPressed: () => openPage(context, const WishlistScreen()),
-                    icon: Badge(
-                      isLabelVisible: store.saved.isNotEmpty,
-                      backgroundColor: Harvest.tomato,
-                      smallSize: 8,
-                      child: const Icon(
-                        Icons.favorite_border,
-                        color: Colors.white,
-                        size: 22,
+              HarvestHubBrandHeader(
+                marketName: address.isEmpty
+                    ? 'Fresh from local farms'
+                    : address,
+                unreadNotifications: false,
+                onLocationTap: () =>
+                    openPage(context, const ProfileEditorScreen()),
+                onNotificationTap: () =>
+                    openPage(context, const NotificationsScreen()),
+                onProfileTap: widget.onProfile,
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 15),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Good food, ${store.account.name.split(' ').first}.',
+                      style: TextStyle(
+                        color: palette.ink,
+                        fontSize: 25,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: -.5,
                       ),
                     ),
-                  ),
-                  IconButton(
-                    tooltip: 'Your basket',
-                    onPressed: () => openPage(context, const BasketScreen()),
-                    icon: Badge(
-                      isLabelVisible: store.basketCount > 0,
-                      label: Text(
-                        '${store.basketCount}',
-                        style: const TextStyle(
-                          fontSize: 10,
+                    const SizedBox(height: 4),
+                    Text(
+                      'Picked and listed by growers in your HarvestHub market.',
+                      style: TextStyle(color: palette.muted, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: SearchBox(
+                  hint: 'Search produce, growers, or markets…',
+                  readOnly: true,
+                  onTap: widget.onExplore,
+                ),
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                child: _marketplaceHero(
+                  context,
+                  onExplore: widget.onExplore,
+                  onAssistant: widget.onAssistant,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Browse categories',
+                        style: TextStyle(
+                          color: palette.ink,
+                          fontSize: 18,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
-                      backgroundColor: Harvest.honey,
-                      textColor: Harvest.darkSoil,
-                      child: const Icon(
-                        Icons.shopping_bag_outlined,
-                        color: Colors.white,
-                        size: 22,
-                      ),
                     ),
-                  ),
-                  const SizedBox(width: 4),
-                  // User Avatar Circle
-                  Material(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      customBorder: const CircleBorder(),
-                      onTap: onProfile,
-                      child: Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.5),
-                            width: 1.5,
-                          ),
-                        ),
-                        alignment: Alignment.center,
-                        child: Text(
-                          name.isEmpty ? 'H' : name[0],
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
+                    TextButton(
+                      onPressed: widget.onExplore,
+                      child: const Text('All products'),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 18),
-
-              // Translucent Search Bar with Mic Icon
-              Material(
-                color: Colors.white.withValues(alpha: 0.16),
-                borderRadius: BorderRadius.circular(16),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(16),
-                  onTap: onExplore,
-                  child: Container(
-                    height: 48,
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.2),
-                      ),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.search, color: Colors.white70, size: 20),
-                        SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            'Search here...',
-                            style: TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                        Icon(
-                          Icons.mic_none_rounded,
-                          color: Colors.white70,
-                          size: 20,
-                        ),
-                      ],
-                    ),
-                  ),
+                  ],
                 ),
               ),
-            ],
-          ),
-        ),
-
-        // 2. Overlapping Weather & Climate Card matching Reference 1 (Screen 1)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: WeatherClimateCard(
-            location: 'Chateauneuf-du-Pape',
-            temperature: '+17°C',
-            highLow: 'H: 23°C   L: 14°C',
-            humidity: '40%',
-            precipitation: '5.1ml',
-            pressure: '450 hpa',
-            wind: '23m/s',
-            sunrise: '5:25 am',
-            sunset: '8:04 am',
-            onTap: () => openPage(context, const TodaysWeatherScreen()),
-          ),
-        ),
-
-        // 3. Invest by Category matching Reference 1 (Screen 1)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const SectionHeader('Invest by Category'),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Expanded(
-                    child: InvestCategoryCard(
-                      title: 'Duration',
-                      icon: Icons.hourglass_bottom_rounded,
-                      iconColor: const Color(0xFF2563EB),
-                      iconBg: const Color(0xFFEBF3FE),
-                      onTap: () => openPage(context, const AllFarmsScreen()),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: InvestCategoryCard(
-                      title: 'Return',
-                      icon: Icons.trending_up_rounded,
-                      iconColor: const Color(0xFF10B981),
-                      iconBg: const Color(0xFFE8F8F0),
-                      onTap: () => openPage(context, const AllFarmsScreen()),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: InvestCategoryCard(
-                      title: 'Low Risk',
-                      icon: Icons.balance_rounded,
-                      iconColor: const Color(0xFFF59E0B),
-                      iconBg: const Color(0xFFFEF3E8),
-                      onTap: () => openPage(context, const AllFarmsScreen()),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: InvestCategoryCard(
-                      title: 'Safety',
-                      icon: Icons.security_rounded,
-                      iconColor: const Color(0xFF06B6D4),
-                      iconBg: const Color(0xFFE6F7F8),
-                      onTap: () => openPage(context, const AllFarmsScreen()),
-                    ),
-                  ),
-                ],
+              SizedBox(
+                height: 42,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: categories.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final category = categories[index];
+                    return ChoiceChip(
+                      label: Text(category),
+                      selected: category == _category,
+                      onSelected: (_) => setState(() => _category = category),
+                      selectedColor: palette.green,
+                      labelStyle: TextStyle(
+                        color: category == _category
+                            ? Colors.white
+                            : palette.ink,
+                        fontWeight: FontWeight.w700,
+                      ),
+                      side: BorderSide(
+                        color: category == _category
+                            ? palette.green
+                            : palette.border,
+                      ),
+                    );
+                  },
+                ),
               ),
-            ],
-          ),
-        ),
-
-        // 4. Best Offers matching Reference 1 (Screen 1)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-          child: SectionHeader(
-            'Best Offers',
-            action: 'View all',
-            onAction: onExplore,
-          ),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            children: [
-              _BestOfferCard(
-                photo: 'farm',
-                title: 'Bekasi Timur Paddy',
-                tag: '5.5% Earnings',
-                price: '10,000 BDT/share',
-                onTap: () => openPage(context, const AllFarmsScreen()),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _category == 'All' ? 'Available now' : _category,
+                        style: TextStyle(
+                          color: palette.ink,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: widget.onExplore,
+                      child: const Text('See all'),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(width: 14),
-              _BestOfferCard(
-                photo: 'market',
-                title: 'Chateauneuf Vineyard',
-                tag: '6.2% Return',
-                price: '15,000 BDT/share',
-                onTap: () => openPage(context, const AllFarmsScreen()),
-              ),
-              const SizedBox(width: 14),
-              _BestOfferCard(
-                photo: 'strawberries',
-                title: 'Spring Serenade Berry Plot',
-                tag: '7.0% Yield',
-                price: '8,500 BDT/share',
-                onTap: () => openPage(context, const PlantingScreen()),
-              ),
-            ],
-          ),
-        ),
-
-        // 5. In Season Categories Capsule Bar
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-          child: SectionHeader(
-            'What’s in season?',
-            action: 'All categories',
-            onAction: onExplore,
-          ),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            children: [
-              for (final cat in [
-                ('Vegetables', 'tomatoes', 'Crisp & leafy'),
-                ('Fruits', 'strawberries', 'Sweet harvest'),
-                ('Grains', 'potatoes', 'Milled & rooted'),
-                ('Pantry', 'honey', 'Wild honey & oils'),
-                ('Dairy', 'farm', 'Artisanal farm dairy'),
-              ])
+              if (products.isEmpty)
                 Padding(
-                  padding: const EdgeInsets.only(right: 12),
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(18),
-                    onTap: () {
-                      openPage(context, ExploreScreen(initialCategory: cat.$1));
-                    },
-                    child: Container(
-                      width: 110,
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(color: Harvest.border),
-                        boxShadow: Harvest.cardShadow,
-                      ),
-                      child: Column(
-                        children: [
-                          Photo(cat.$2, height: 64, width: 90, radius: 12),
-                          const SizedBox(height: 8),
-                          Text(
-                            cat.$1,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w700,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            cat.$3,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 10,
-                              color: Harvest.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: InfoNote(
+                    store.loading
+                        ? 'Loading products from your market…'
+                        : _category == 'All'
+                        ? 'No in-stock products are listed in your market yet.'
+                        : 'No in-stock products in this category yet.',
+                  ),
+                )
+              else
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: ProductGrid(
+                    products: products.take(4).toList(),
+                    onOpen: (product) =>
+                        openPage(context, ProductScreen(product: product)),
                   ),
                 ),
-            ],
-          ),
-        ),
-
-        // 6. Seasonal Fresh Today Produce Grid
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-          child: SectionHeader(
-            'Fresh Today',
-            action: 'Browse all',
-            onAction: onExplore,
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: ProductGrid(
-            products: featuredProducts,
-            onOpen: (p) => openPage(context, ProductScreen(product: p)),
-          ),
-        ),
-
-        // 7. Meet Your Growers Spotlight
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-          child: const SectionHeader(
-            'Meet Your Growers',
-            subtitle: null,
-            icon: Icons.storefront_outlined,
-          ),
-        ),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Row(
-            children: [
-              for (final f in farms)
-                FarmerCard(
-                  farm: f,
-                  onTap: () => openPage(context, FarmScreen(farm: f)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Meet the growers',
+                        style: TextStyle(
+                          color: palette.ink,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          openPage(context, const AllFarmsScreen()),
+                      child: const Text('Directory'),
+                    ),
+                  ],
                 ),
-            ],
-          ),
-        ),
-
-        // 8. Live Crop Advisory & Field Notes Shortcut
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(22),
-            onTap: () => openPage(context, const TodaysWeatherScreen()),
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(
-                color: Harvest.forest,
-                borderRadius: BorderRadius.circular(22),
-                boxShadow: Harvest.ambientShadow,
               ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 48,
-                    height: 48,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: const Icon(
-                      Icons.wb_sunny_outlined,
-                      color: Colors.white,
-                      size: 24,
-                    ),
+              if (featuredFarms.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 18),
+                  child: InfoNote(
+                    'Farmer profiles will appear here as local growers join.',
                   ),
-                  const SizedBox(width: 14),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Today’s Farm Weather & Field Notes',
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                            fontSize: 14,
+                )
+              else
+                ...featuredFarms.map((farm) {
+                  final stockCount = store.products
+                      .where((p) => p.farmId == farm.id && p.stock > 0)
+                      .length;
+                  return Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 0, 18, 9),
+                    child: Material(
+                      color: palette.surface,
+                      borderRadius: BorderRadius.circular(18),
+                      child: ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        leading: CircleAvatar(
+                          backgroundColor: palette.paleLeaf,
+                          child: Icon(
+                            Icons.agriculture_rounded,
+                            color: palette.green,
                           ),
                         ),
-                        SizedBox(height: 3),
-                        Text(
-                          'Bekasi Timur: 33°C Cloudy · Pesticides recommended',
-                          style: TextStyle(
-                            color: Color(0xFFD4E3D7),
-                            fontSize: 11,
-                          ),
+                        title: Text(
+                          farm.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w800),
+                        ),
+                        subtitle: Text(
+                          '${farm.location.isEmpty ? farm.market : farm.location} · $stockCount products',
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.arrow_forward_ios,
-                    color: Colors.white70,
-                    size: 14,
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-
-        // 9. Interactive AI Assistant Teaser Card
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
-          child: Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Harvest.softSage, width: 1.2),
-              boxShadow: Harvest.ambientShadow,
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: const LinearGradient(
-                      colors: [Harvest.forest, Harvest.green],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Harvest.green.withValues(alpha: 0.35),
-                        blurRadius: 14,
-                        spreadRadius: 2,
-                      ),
-                    ],
-                  ),
-                  child: const Icon(
-                    Icons.auto_awesome,
-                    color: Harvest.honey,
-                    size: 22,
-                  ),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Ask Harvest AI',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
+                        trailing: Icon(
+                          Icons.chevron_right_rounded,
+                          color: palette.muted,
                         ),
+                        onTap: () => openPage(context, FarmScreen(farm: farm)),
                       ),
-                      const SizedBox(height: 3),
-                      const Text(
-                        '“How should I store fresh vine tomatoes?”',
-                        style: TextStyle(
-                          color: Harvest.muted,
-                          fontSize: 11,
-                          fontStyle: FontStyle.italic,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton.filledTonal(
-                  tooltip: 'Open assistant',
-                  style: IconButton.styleFrom(backgroundColor: Harvest.sage),
-                  onPressed: onAssistant,
-                  icon: const Icon(
-                    Icons.arrow_forward,
-                    size: 18,
-                    color: Harvest.forest,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-
-        // 10. Recent Order Quick Track
-        if (recentOrders.isNotEmpty) ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 24, 20, 0),
-            child: SectionHeader(
-              'Recent Order',
-              action: 'All orders',
-              onAction: () => openPage(context, const OrdersScreen()),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: OrderCard(
-              order: recentOrders.first,
-              onOpen: () => openPage(
-                context,
-                OrderDetailScreen(order: recentOrders.first),
-              ),
-            ),
-          ),
-        ],
-        const SizedBox(height: 32),
-      ],
-    );
-  }
-}
-
-class _BestOfferCard extends StatelessWidget {
-  const _BestOfferCard({
-    required this.photo,
-    required this.title,
-    required this.tag,
-    required this.price,
-    required this.onTap,
-  });
-
-  final String photo, title, tag, price;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) => InkWell(
-    borderRadius: BorderRadius.circular(20),
-    onTap: onTap,
-    child: Container(
-      width: 220,
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Harvest.border),
-        boxShadow: Harvest.cardShadow,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              ClipRRect(
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  topRight: Radius.circular(20),
-                ),
-                child: Photo(photo, height: 110, width: 220, radius: 0),
-              ),
-              Positioned(
-                top: 10,
-                right: 10,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Harvest.forest,
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    tag,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800,
                     ),
-                  ),
+                  );
+                }),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+                child: _assistantInvite(
+                  context,
+                  palette,
+                  onTap: widget.onAssistant,
                 ),
               ),
             ],
           ),
-          Padding(
-            padding: const EdgeInsets.all(12),
+        ),
+      ),
+      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
+      floatingActionButton: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            AssistantRobot(onTap: widget.onAssistant),
+            const BasketAction(floating: true),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _marketplaceHero(
+    BuildContext context, {
+    required VoidCallback onExplore,
+    required VoidCallback onAssistant,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xFF143E2B), Color(0xFF246A43), Color(0xFF37794D)],
+        ),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x22244531),
+            blurRadius: 20,
+            offset: Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: const TextStyle(
+                const Text(
+                  'FROM GROWER TO TABLE',
+                  style: TextStyle(
+                    color: Color(0xFFCDEBCF),
+                    fontSize: 10,
+                    letterSpacing: 1.1,
                     fontWeight: FontWeight.w800,
-                    fontSize: 13,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  price,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Harvest.forest,
+                const SizedBox(height: 8),
+                const Text(
+                  'Fresh from farms\nnear your home.',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 21,
+                    height: 1.15,
+                    fontWeight: FontWeight.w800,
                   ),
+                ),
+                const SizedBox(height: 13),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 7,
+                  children: [
+                    _heroAction(
+                      'Shop produce',
+                      Icons.arrow_forward_rounded,
+                      onExplore,
+                    ),
+                    _heroAction(
+                      'Ask the assistant',
+                      Icons.auto_awesome_rounded,
+                      onAssistant,
+                    ),
+                  ],
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          const Icon(Icons.eco_rounded, color: Color(0xFFB7E4B8), size: 48),
         ],
+      ),
+    );
+  }
+
+  Widget _heroAction(String label, IconData icon, VoidCallback onTap) =>
+      OutlinedButton.icon(
+        onPressed: onTap,
+        icon: Icon(icon, size: 15),
+        label: Text(label),
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          side: BorderSide(color: Colors.white.withValues(alpha: .5)),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          textStyle: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
+          visualDensity: VisualDensity.compact,
+        ),
+      );
+
+  Widget _assistantInvite(
+    BuildContext context,
+    HarvestPalette palette, {
+    required VoidCallback onTap,
+  }) => Material(
+    color: palette.surface,
+    borderRadius: BorderRadius.circular(20),
+    child: InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: palette.paleLeaf,
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(Icons.auto_awesome_rounded, color: palette.green),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'HarvestHub assistant',
+                    style: TextStyle(
+                      color: palette.ink,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    'Ask about produce, storage, and nutrition.',
+                    style: TextStyle(color: palette.muted, fontSize: 11),
+                  ),
+                ],
+              ),
+            ),
+            Icon(Icons.arrow_forward_rounded, color: palette.green, size: 18),
+          ],
+        ),
       ),
     ),
   );
@@ -737,8 +486,9 @@ class _ExploreScreenState extends State<ExploreScreen> {
   final TextEditingController _search = TextEditingController();
   late String _category = widget.initialCategory ?? 'All';
   String? _selectedFarmId;
-  bool _onlyInStock = false;
-  int _exploreMode = 0; // 0: Produce Market, 1: Active Farms, 2: Planting
+  bool _onlyInStock = true;
+  String _sort = 'Name';
+  double? _latitude, _longitude, _radius;
 
   @override
   void dispose() {
@@ -746,127 +496,112 @@ class _ExploreScreenState extends State<ExploreScreen> {
     super.dispose();
   }
 
-  void _showFilterSheet() {
-    final store = HarvestScope.of(context);
-    showModalBottomSheet<void>(
+  Future<void> _showFilters(HarvestStore store) async {
+    var stockOnly = _onlyInStock;
+    var farmId = _selectedFarmId;
+    var sort = _sort;
+    var latitude = _latitude, longitude = _longitude, radius = _radius;
+    await showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
+      backgroundColor: Colors.transparent,
       builder: (sheetContext) => StatefulBuilder(
-        builder: (context, setSheetState) => SheetBody(
+        builder: (context, update) => SheetBody(
           children: [
+            const PageHeading(
+              'Refine your search',
+              subtitle: 'Filter the live farm catalog.',
+            ),
+            SwitchListTile.adaptive(
+              contentPadding: EdgeInsets.zero,
+              value: stockOnly,
+              title: const Text('Available stock only'),
+              subtitle: const Text(
+                'Hide products that are currently sold out.',
+              ),
+              onChanged: (value) => update(() => stockOnly = value),
+            ),
+            const SectionHeader('Farm'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 7,
+              children: [
+                ChoiceChip(
+                  label: const Text('All farms'),
+                  selected: farmId == null,
+                  onSelected: (_) => update(() => farmId = null),
+                ),
+                for (final farm in store.farms)
+                  ChoiceChip(
+                    label: Text(farm.name),
+                    selected: farmId == farm.id,
+                    onSelected: (_) => update(() => farmId = farm.id),
+                  ),
+              ],
+            ),
+            const SectionHeader('Distance from location'),
             Row(
               children: [
                 Expanded(
                   child: Text(
-                    'Filters & Sorting',
-                    style: Harvest.editorial(24),
+                    latitude == null
+                        ? 'Choose a map point or use autodetect.'
+                        : 'Location selected · distances use farm coordinates.',
                   ),
                 ),
-                TextButton(
-                  onPressed: () {
-                    setSheetState(() {
-                      _category = 'All';
-                      _selectedFarmId = null;
-                      _onlyInStock = false;
+                LocationPickerButton(
+                  onSelected: (value) {
+                    final parts = value.split(',');
+                    update(() {
+                      latitude = double.tryParse(parts.first.trim());
+                      longitude = double.tryParse(parts.last.trim());
                     });
-                    setState(() {});
                   },
-                  child: const Text('Reset', style: TextStyle(fontSize: 12)),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
-            const Text(
-              'Categories',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
             Wrap(
               spacing: 8,
-              runSpacing: 8,
-              children: ['All', ...store.categories].map((c) {
-                final sel = _category == c;
-                return ChoiceChip(
-                  label: Text(c),
-                  selected: sel,
-                  selectedColor: Harvest.forest,
-                  labelStyle: TextStyle(
-                    color: sel ? Colors.white : Harvest.ink,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                  onSelected: (val) {
-                    setSheetState(() => _category = c);
-                    setState(() {});
-                  },
-                );
-              }).toList(),
-            ),
-            const SizedBox(height: 18),
-            const Text(
-              'Local Farms',
-              style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-            ),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
               children: [
                 ChoiceChip(
-                  label: const Text('All Farms'),
-                  selected: _selectedFarmId == null,
-                  selectedColor: Harvest.forest,
-                  labelStyle: TextStyle(
-                    color: _selectedFarmId == null ? Colors.white : Harvest.ink,
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                  onSelected: (_) {
-                    setSheetState(() => _selectedFarmId = null);
-                    setState(() {});
-                  },
+                  label: const Text('Any distance'),
+                  selected: radius == null,
+                  onSelected: (_) => update(() => radius = null),
                 ),
-                ...store.farms.map((f) {
-                  final sel = _selectedFarmId == f.id;
-                  return ChoiceChip(
-                    label: Text(f.name),
-                    selected: sel,
-                    selectedColor: Harvest.forest,
-                    labelStyle: TextStyle(
-                      color: sel ? Colors.white : Harvest.ink,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                    onSelected: (_) {
-                      setSheetState(() => _selectedFarmId = f.id);
-                      setState(() {});
-                    },
-                  );
-                }),
+                for (final km in [5.0, 10.0, 25.0, 50.0])
+                  ChoiceChip(
+                    label: Text('${km.toInt()} km'),
+                    selected: radius == km,
+                    onSelected: latitude == null
+                        ? null
+                        : (_) => update(() => radius = km),
+                  ),
               ],
             ),
-            const SizedBox(height: 16),
-            SwitchListTile(
-              contentPadding: EdgeInsets.zero,
-              title: const Text(
-                'Only available in stock',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
-              ),
-              subtitle: const Text(
-                'Hide sold-out items',
-                style: TextStyle(fontSize: 12, color: Harvest.muted),
-              ),
-              value: _onlyInStock,
-              activeTrackColor: Harvest.forest,
-              onChanged: (val) {
-                setSheetState(() => _onlyInStock = val);
-                setState(() {});
-              },
+            const SectionHeader('Sort by'),
+            ChoiceRow(
+              values: const [
+                'Name',
+                'Price: low to high',
+                'Price: high to low',
+              ],
+              selected: sort,
+              onSelected: (value) => update(() => sort = value),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             HarvestButton(
-              label: 'Apply Filters',
-              onPressed: () => Navigator.pop(sheetContext),
+              label: 'Apply filters',
+              onPressed: () {
+                setState(() {
+                  _onlyInStock = stockOnly;
+                  _selectedFarmId = farmId;
+                  _sort = sort;
+                  _latitude = latitude;
+                  _longitude = longitude;
+                  _radius = radius;
+                });
+                Navigator.pop(sheetContext);
+              },
             ),
           ],
         ),
@@ -877,406 +612,178 @@ class _ExploreScreenState extends State<ExploreScreen> {
   @override
   Widget build(BuildContext context) {
     final store = HarvestScope.of(context);
+    final palette = Harvest.colors(context);
     final query = _search.text.trim().toLowerCase();
-
-    final filtered = store.visibleProducts.where((p) {
-      if (_category != 'All' && p.category != _category) return false;
-      if (_selectedFarmId != null && p.farmId != _selectedFarmId) return false;
-      if (_onlyInStock && p.stock <= 0) return false;
-      if (query.isNotEmpty) {
-        final farm = store.farm(p.farmId);
-        final match =
-            p.name.toLowerCase().contains(query) ||
-            p.category.toLowerCase().contains(query) ||
-            farm.name.toLowerCase().contains(query) ||
-            farm.location.toLowerCase().contains(query);
-        if (!match) return false;
+    final products = store.products.where((product) {
+      if (_category != 'All' && product.category != _category) return false;
+      if (_selectedFarmId != null && product.farmId != _selectedFarmId) {
+        return false;
+      }
+      if (_onlyInStock && product.stock <= 0) return false;
+      final farm = store.farm(product.farmId);
+      if (!farm.active) return false;
+      if (_radius != null && _latitude != null && _longitude != null) {
+        if (farm.latitude == null || farm.longitude == null) return false;
+        if (Geolocator.distanceBetween(
+              _latitude!,
+              _longitude!,
+              farm.latitude!,
+              farm.longitude!,
+            ) >
+            _radius! * 1000) {
+          return false;
+        }
+      }
+      if (query.isNotEmpty &&
+          !'${product.name} ${product.category} ${farm.name} ${farm.market} ${farm.location}'
+              .toLowerCase()
+              .contains(query)) {
+        return false;
       }
       return true;
     }).toList();
+    products.sort(
+      (a, b) => switch (_sort) {
+        'Price: low to high' => a.price.compareTo(b.price),
+        'Price: high to low' => b.price.compareTo(a.price),
+        _ => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      },
+    );
+    final categories = ['All', ...store.categories];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: palette.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        title: const Text(
-          'Explore Produce',
-          style: TextStyle(
-            fontWeight: FontWeight.w800,
-            fontSize: 18,
-            color: Harvest.ink,
-          ),
-        ),
-        actions: const [BasketAction()],
+        title: const Text('Explore produce'),
+        actions: [const BasketAction(), const SizedBox(width: 8)],
       ),
       body: Column(
         children: [
-          // Directory Mode Switcher [Produce | Active Farms | Planting]
           Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 10),
-            child: Container(
-              padding: const EdgeInsets.all(4),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Harvest.border),
-              ),
-              child: Row(
-                children: [
-                  _modeButton('Produce', 0),
-                  _modeButton('Active Farms', 1),
-                  _modeButton('Planting', 2),
-                ],
-              ),
+            padding: const EdgeInsets.fromLTRB(18, 7, 18, 10),
+            child: Row(
+              children: [
+                Expanded(
+                  child: SearchBox(
+                    controller: _search,
+                    hint: 'Search produce, farms, markets…',
+                    onChanged: (_) => setState(() {}),
+                    onSubmitted: (value) => store.rememberSearch(value),
+                    voiceSearch: true,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Filter and sort products',
+                  onPressed: () => _showFilters(store),
+                  icon: const Icon(Icons.tune_rounded),
+                  style: IconButton.styleFrom(
+                    backgroundColor: palette.paleLeaf,
+                    foregroundColor: palette.green,
+                    minimumSize: const Size(48, 48),
+                  ),
+                ),
+              ],
             ),
           ),
-
-          // Main View Switcher
+          SizedBox(
+            height: 42,
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 18),
+              scrollDirection: Axis.horizontal,
+              itemCount: categories.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, index) {
+                final category = categories[index];
+                final active = category == _category;
+                return ChoiceChip(
+                  label: Text(category),
+                  selected: active,
+                  onSelected: (_) => setState(() => _category = category),
+                  selectedColor: palette.green,
+                  labelStyle: TextStyle(
+                    color: active ? Colors.white : palette.ink,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  side: BorderSide(
+                    color: active ? palette.green : palette.border,
+                  ),
+                );
+              },
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${products.length} ${products.length == 1 ? 'product' : 'products'}',
+                    style: TextStyle(
+                      color: palette.muted,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+                if (_selectedFarmId != null || !_onlyInStock || _sort != 'Name')
+                  TextButton(
+                    onPressed: () => setState(() {
+                      _selectedFarmId = null;
+                      _onlyInStock = true;
+                      _sort = 'Name';
+                    }),
+                    child: const Text('Reset filters'),
+                  ),
+              ],
+            ),
+          ),
           Expanded(
-            child: _exploreMode == 0
-                ? _buildMarketProduceView(filtered, store)
-                : _exploreMode == 1
-                ? _buildActiveFarmsView()
-                : _buildPlantingView(),
+            child: products.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: InfoNote(
+                        store.loading
+                            ? 'Loading live farm listings…'
+                            : query.isEmpty
+                            ? 'No products match these filters.'
+                            : 'No products match your search.',
+                      ),
+                    ),
+                  )
+                : LayoutBuilder(
+                    builder: (context, constraints) {
+                      final columns = constraints.maxWidth > 700 ? 3 : 2;
+                      return GridView.builder(
+                        padding: const EdgeInsets.fromLTRB(18, 4, 18, 24),
+                        itemCount: products.length,
+                        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: columns,
+                          crossAxisSpacing: 14,
+                          mainAxisSpacing: 14,
+                          childAspectRatio: constraints.maxWidth > 700
+                              ? .72
+                              : .62,
+                        ),
+                        itemBuilder: (context, index) => ProductCard(
+                          product: products[index],
+                          onOpen: () {
+                            store.rememberSearch(query);
+                            openPage(
+                              context,
+                              ProductScreen(product: products[index]),
+                            );
+                          },
+                        ),
+                      );
+                    },
+                  ),
           ),
         ],
       ),
     );
   }
-
-  Widget _modeButton(String label, int index) {
-    final isSelected = _exploreMode == index;
-    return Expanded(
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () {
-          setState(() => _exploreMode = index);
-          HapticFeedback.selectionClick();
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected ? Harvest.forest : Colors.transparent,
-            borderRadius: BorderRadius.circular(18),
-          ),
-          alignment: Alignment.center,
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: isSelected ? Colors.white : Harvest.muted,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActiveFarmsView() => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 6, 20, 30),
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'Active Farms',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: Harvest.ink,
-            ),
-          ),
-          IconButton(
-            icon: const Icon(
-              Icons.open_in_new,
-              size: 18,
-              color: Harvest.forest,
-            ),
-            onPressed: () => openPage(context, const AllFarmsScreen()),
-          ),
-        ],
-      ),
-      const SizedBox(height: 10),
-      FarmDirectoryCard(
-        name: 'Cucumber Farm 13',
-        earnings: '5.5%',
-        price: '10,000 BDT/share',
-        period: '4 Months',
-        photo: 'farm',
-        onTap: () => notice(context, 'Booking shares for Cucumber Farm 13'),
-      ),
-      FarmDirectoryCard(
-        name: 'Agriculture Farm 27',
-        earnings: '5.5%',
-        price: '10,000 BDT/share',
-        period: '4 Months',
-        photo: 'market',
-        onTap: () => notice(context, 'Booking shares for Agriculture Farm 27'),
-      ),
-      FarmDirectoryCard(
-        name: 'Korolla Farm 18',
-        earnings: '5.5%',
-        price: '10,000 BDT/share',
-        period: '4 Months',
-        photo: 'strawberries',
-        onTap: () => notice(context, 'Booking shares for Korolla Farm 18'),
-      ),
-      FarmDirectoryCard(
-        name: 'Enrichment Farm 7',
-        earnings: '5.5%',
-        price: '10,000 BDT/share',
-        period: '4 Months',
-        photo: 'potatoes',
-        onTap: () => notice(context, 'Booking shares for Enrichment Farm 7'),
-      ),
-    ],
-  );
-
-  Widget _buildPlantingView() => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 6, 20, 30),
-    children: [
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          const Text(
-            'Planting Stories',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: Harvest.ink,
-            ),
-          ),
-          IconButton(
-            icon: const Icon(
-              Icons.open_in_new,
-              size: 18,
-              color: Harvest.forest,
-            ),
-            onPressed: () => openPage(context, const PlantingScreen()),
-          ),
-        ],
-      ),
-      const SizedBox(height: 10),
-      _plantingCard(
-        'Spring Serenade Farming',
-        'Robert Fox',
-        'New York, USA',
-        '\$22.00-400.00',
-        'farm',
-      ),
-      _plantingCard(
-        'Urban Oasis Nursery',
-        'Sarah Jenkins',
-        'New York, USA',
-        '\$15.00-280.00',
-        'market',
-      ),
-      _plantingCard(
-        'Green Meadow Agronomics',
-        'David Miller',
-        'Ohio, USA',
-        '\$30.00-500.00',
-        'strawberries',
-      ),
-    ],
-  );
-
-  Widget _plantingCard(
-    String title,
-    String farmer,
-    String loc,
-    String price,
-    String photo,
-  ) => Container(
-    margin: const EdgeInsets.only(bottom: 14),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(20),
-      border: Border.all(color: Harvest.border),
-      boxShadow: Harvest.cardShadow,
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ClipRRect(
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          child: Photo(photo, height: 130, width: double.infinity, radius: 0),
-        ),
-        Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 14,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    '$farmer · $loc',
-                    style: const TextStyle(color: Harvest.muted, fontSize: 11),
-                  ),
-                ],
-              ),
-              Text(
-                price,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFF10B981),
-                  fontSize: 13,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ],
-    ),
-  );
-
-  Widget _buildMarketProduceView(List<Product> filtered, HarvestStore store) =>
-      CustomScrollView(
-        slivers: [
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 4, 20, 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SearchBox(
-                      controller: _search,
-                      onChanged: (_) => setState(() {}),
-                      hint: 'Search produce, farms, markets…',
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(16),
-                    child: InkWell(
-                      borderRadius: BorderRadius.circular(16),
-                      onTap: _showFilterSheet,
-                      child: Container(
-                        width: 50,
-                        height: 50,
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(
-                            color:
-                                (_selectedFarmId != null ||
-                                    _onlyInStock ||
-                                    _category != 'All')
-                                ? Harvest.forest
-                                : Harvest.border,
-                            width: 1.2,
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.tune,
-                          size: 20,
-                          color:
-                              (_selectedFarmId != null ||
-                                  _onlyInStock ||
-                                  _category != 'All')
-                              ? Harvest.forest
-                              : Harvest.ink,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(left: 20, bottom: 16),
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                physics: const BouncingScrollPhysics(),
-                child: Row(
-                  children: ['All', ...store.categories].map((c) {
-                    final sel = _category == c;
-                    return Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: FilterChip(
-                        label: Text(c),
-                        selected: sel,
-                        selectedColor: Harvest.forest,
-                        backgroundColor: Colors.white,
-                        labelStyle: TextStyle(
-                          fontFamily: 'Manrope',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: sel ? Colors.white : Harvest.ink,
-                        ),
-                        side: BorderSide(
-                          color: sel ? Harvest.forest : Harvest.border,
-                          width: 1,
-                        ),
-                        onSelected: (_) => setState(() => _category = c),
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
-            ),
-          ),
-          if (filtered.isEmpty)
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: EmptyState(
-                icon: Icons.search_off_outlined,
-                title: 'No fresh matches',
-                message: 'Try adjusting your search terms, removing filters, or browsing other local farms.',
-                action: 'Reset Filters',
-                onAction: () => setState(() {
-                  _search.clear();
-                  _category = 'All';
-                  _selectedFarmId = null;
-                  _onlyInStock = false;
-                }),
-              ),
-            )
-          else ...[
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-                child: Text(
-                  '${filtered.length} fresh finds',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Harvest.muted,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
-            ),
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(20, 0, 20, 30),
-              sliver: SliverToBoxAdapter(
-                child: ProductGrid(
-                  products: filtered,
-                  onOpen: (p) {
-                    store.rememberSearch(p.name);
-                    openPage(context, ProductScreen(product: p));
-                  },
-                ),
-              ),
-            ),
-          ],
-        ],
-      );
 }
 
 class ProductScreen extends StatefulWidget {
@@ -1292,6 +799,99 @@ class _ProductScreenState extends State<ProductScreen> {
   int _quantity = 1;
   int _selectedThumbnail = 0;
   bool _isDescriptionExpanded = false;
+
+  Widget _trustBadge(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required Color color,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: color.withValues(alpha: 0.25)),
+        ),
+        child: Column(
+          children: [
+            Icon(icon, size: 18, color: color),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontFamily: 'Manrope',
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: color,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _nutritionCard(
+    BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required Color color,
+  }) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Harvest.colors(context).surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Harvest.colors(context).border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(7),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.12),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(icon, size: 16, color: color),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontFamily: 'Manrope',
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    fontFamily: 'Manrope',
+                    fontSize: 10,
+                    color: Harvest.colors(context).muted,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1335,12 +935,12 @@ class _ProductScreenState extends State<ProductScreen> {
             ),
           ),
         ),
-        title: const Text(
+        title: Text(
           'Farm Details',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.w800,
-            color: Harvest.ink,
+            color: Harvest.colors(context).ink,
           ),
         ),
         actions: [
@@ -1348,7 +948,7 @@ class _ProductScreenState extends State<ProductScreen> {
             padding: const EdgeInsets.only(right: 8),
             child: CircularNavButton(
               icon: isSaved ? Icons.favorite : Icons.favorite_border,
-              iconColor: isSaved ? Harvest.tomato : Harvest.ink,
+              iconColor: isSaved ? Harvest.tomato : Harvest.colors(context).ink,
               onPressed: () {
                 store.toggleSaved(p.id);
                 HapticFeedback.lightImpact();
@@ -1386,18 +986,20 @@ class _ProductScreenState extends State<ProductScreen> {
                       width: 220,
                       height: 48,
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.all(
+                        borderRadius: const BorderRadius.all(
                           Radius.elliptical(220, 48),
                         ),
                         border: Border.all(
-                          color: const Color(0xFF10B981)
-                              .withValues(alpha: 0.35),
+                          color: const Color(
+                            0xFF10B981,
+                          ).withValues(alpha: 0.35),
                           width: 1.5,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: const Color(0xFF0E4D34)
-                                .withValues(alpha: 0.08),
+                            color: const Color(
+                              0xFF0E4D34,
+                            ).withValues(alpha: 0.08),
                             blurRadius: 18,
                             spreadRadius: 2,
                             offset: const Offset(0, 10),
@@ -1490,10 +1092,12 @@ class _ProductScreenState extends State<ProductScreen> {
                       duration: const Duration(milliseconds: 200),
                       padding: const EdgeInsets.all(3),
                       decoration: BoxDecoration(
-                        color: Colors.white,
+                        color: Harvest.colors(context).surface,
                         borderRadius: BorderRadius.circular(14),
                         border: Border.all(
-                          color: isSelected ? Harvest.forest : Harvest.border,
+                          color: isSelected
+                              ? Harvest.forest
+                              : Harvest.colors(context).border,
                           width: isSelected ? 2 : 1,
                         ),
                         boxShadow: [
@@ -1524,13 +1128,13 @@ class _ProductScreenState extends State<ProductScreen> {
 
           // 3. Detail Container Sheet matching Reference 1 (Screen 2)
           Container(
-            decoration: const BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.only(
+            decoration: BoxDecoration(
+              color: Harvest.colors(context).surface,
+              borderRadius: const BorderRadius.only(
                 topLeft: Radius.circular(32),
                 topRight: Radius.circular(32),
               ),
-              boxShadow: [
+              boxShadow: const [
                 BoxShadow(
                   color: Color(0x0A000000),
                   blurRadius: 24,
@@ -1542,159 +1146,168 @@ class _ProductScreenState extends State<ProductScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Product Title & Price Row
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                // Product Title & Price Row with Discount Tag matching Image 3 Screen 3
+                Text(p.name, style: Harvest.editorial(25)),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.spaceBetween,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Expanded(child: Text(p.name, style: Harvest.editorial(26))),
-                    const SizedBox(width: 12),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
-                          '${money(p.price)}/pcs',
+                          '${money(p.price)} / ${p.unit}',
                           style: const TextStyle(
-                            fontSize: 20,
+                            fontFamily: 'Manrope',
+                            fontSize: 18,
                             fontWeight: FontWeight.w800,
-                            color: Harvest.forest,
+                            color: Color(0xFF16A34A),
+                          ),
+                        ),
+                        Text(
+                          'Rs. ${((p.price * 1.25) / 100).toStringAsFixed(0)}',
+                          style: TextStyle(
+                            fontFamily: 'Manrope',
+                            fontSize: 13,
+                            decoration: TextDecoration.lineThrough,
+                            color: Harvest.colors(context).muted,
+                          ),
+                        ),
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 6,
+                            vertical: 2,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFEF3C7),
+                            borderRadius: BorderRadius.circular(6),
+                          ),
+                          child: const Text(
+                            '20% Off',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontSize: 10,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFD97706),
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-
-                // Stock Badge & Rating & Stepper Row
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            p.stock > 0 ? 'Available in stock' : 'Out of stock',
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                              color: p.stock > 0
-                                  ? const Color(0xFF10B981)
-                                  : Harvest.tomato,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          const Row(
-                            children: [
-                              Icon(
-                                Icons.star,
-                                color: Color(0xFFF59E0B),
-                                size: 16,
-                              ),
-                              SizedBox(width: 4),
-                              Text(
-                                '4.9 (192)',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: Harvest.muted,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-
-                    // Counter Stepper [- 1pcs +] matching reference
                     Container(
                       padding: const EdgeInsets.symmetric(
                         horizontal: 4,
-                        vertical: 4,
+                        vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: Harvest.canvas,
+                        color: Harvest.colors(context).surface,
                         borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Harvest.border),
+                        border: Border.all(
+                          color: Harvest.colors(context).border,
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          InkWell(
-                            borderRadius: BorderRadius.circular(18),
-                            onTap: _quantity > 1
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 30,
+                              minHeight: 30,
+                            ),
+                            icon: const Icon(Icons.remove, size: 16),
+                            onPressed: _quantity > 1
                                 ? () => setState(() => _quantity--)
                                 : null,
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: const BoxDecoration(
-                                color: Harvest.forest,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.remove,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                            ),
                           ),
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
                             child: Text(
-                              '${_quantity}pcs',
+                              '$_quantity',
                               style: const TextStyle(
+                                fontFamily: 'Manrope',
                                 fontSize: 13,
                                 fontWeight: FontWeight.w800,
-                                color: Harvest.ink,
                               ),
                             ),
                           ),
-                          InkWell(
-                            borderRadius: BorderRadius.circular(18),
-                            onTap: (p.stock > 0 && _quantity < p.stock)
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(
+                              minWidth: 30,
+                              minHeight: 30,
+                            ),
+                            icon: const Icon(Icons.add, size: 16),
+                            onPressed: _quantity < (p.stock > 0 ? p.stock : 1)
                                 ? () => setState(() => _quantity++)
                                 : null,
-                            child: Container(
-                              width: 32,
-                              height: 32,
-                              decoration: const BoxDecoration(
-                                color: Harvest.forest,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(
-                                Icons.add,
-                                color: Colors.white,
-                                size: 16,
-                              ),
-                            ),
                           ),
                         ],
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 22),
+                const SizedBox(height: 10),
 
-                // Description Heading & Expandable Text
-                const Text(
+                // Stock Badge Row
+                Row(
+                  children: [
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: p.stock > 0
+                            ? const Color(0xFF16A34A)
+                            : const Color(0xFFDC2626),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      p.stock > 0
+                          ? 'In Stock · ${p.stock} ${p.unit} available'
+                          : 'Out of stock',
+                      style: TextStyle(
+                        fontFamily: 'Manrope',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: p.stock > 0
+                            ? const Color(0xFF16A34A)
+                            : const Color(0xFFDC2626),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                // Description
+                Text(
                   'Description',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontFamily: 'Manrope',
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: Harvest.ink,
+                    color: Harvest.colors(context).ink,
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
                   p.description.isEmpty
-                      ? 'Limes are closely related to lemons. They even look similar to them. Lime tree harvest is packed with natural antioxidants and grown organically without synthetic pesticides.'
+                      ? 'The farmer has not added a description yet.'
                       : p.description,
                   maxLines: _isDescriptionExpanded ? null : 3,
-                  style: const TextStyle(
+                  style: TextStyle(
+                    fontFamily: 'Manrope',
                     fontSize: 13,
-                    color: Harvest.muted,
-                    height: 1.5,
+                    color: Harvest.colors(context).muted,
+                    height: 1.45,
                   ),
                 ),
                 InkWell(
@@ -1706,22 +1319,229 @@ class _ProductScreenState extends State<ProductScreen> {
                     child: Text(
                       _isDescriptionExpanded ? 'Read Less' : 'Read More',
                       style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Harvest.forest,
+                        fontFamily: 'Manrope',
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF16A34A),
                       ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
 
-                // Related Products Strip matching Reference 1 (Screen 2)
-                const Text(
+                // 3 Trust Badges Row matching Image 3 Screen 3
+                Row(
+                  children: [
+                    _trustBadge(
+                      context,
+                      icon: Icons.eco_rounded,
+                      label: p.category,
+                      color: const Color(0xFF16A34A),
+                    ),
+                    const SizedBox(width: 8),
+                    _trustBadge(
+                      context,
+                      icon: Icons.science_outlined,
+                      label: '${p.stock} in stock',
+                      color: const Color(0xFF2563EB),
+                    ),
+                    const SizedBox(width: 8),
+                    _trustBadge(
+                      context,
+                      icon: Icons.place_outlined,
+                      label: 'Per ${p.unit}',
+                      color: const Color(0xFFD97706),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+
+                // Farmer Card with Follow Button matching Image 3 Screen 3
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Harvest.colors(context).canvas,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Harvest.colors(context).border),
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(14),
+                        child: Photo(
+                          farm.image,
+                          width: 48,
+                          height: 48,
+                          radius: 14,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    farm.name,
+                                    style: const TextStyle(
+                                      fontFamily: 'Manrope',
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                OutlinedButton(
+                                  onPressed: () {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Following ${farm.name}!',
+                                        ),
+                                        duration: const Duration(seconds: 1),
+                                      ),
+                                    );
+                                  },
+                                  style: OutlinedButton.styleFrom(
+                                    foregroundColor: const Color(0xFF1E5631),
+                                    side: const BorderSide(
+                                      color: Color(0xFF1E5631),
+                                      width: 1.2,
+                                    ),
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 4,
+                                    ),
+                                    minimumSize: Size.zero,
+                                    tapTargetSize:
+                                        MaterialTapTargetSize.shrinkWrap,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Follow',
+                                    style: TextStyle(
+                                      fontFamily: 'Manrope',
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 3),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.storefront_outlined,
+                                  color: Color(0xFFF59E0B),
+                                  size: 14,
+                                ),
+                                const SizedBox(width: 3),
+                                Text(
+                                  'Farm listing',
+                                  style: TextStyle(
+                                    fontFamily: 'Manrope',
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: Harvest.colors(context).muted,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              farm.location.isEmpty
+                                  ? 'Location not published'
+                                  : farm.location,
+                              style: TextStyle(
+                                fontFamily: 'Manrope',
+                                color: Harvest.colors(context).muted,
+                                fontSize: 11,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+
+                // 2x2 Nutrition Highlights Grid matching Image 3 Screen 3
+                Text(
+                  'Nutrition Highlights',
+                  style: TextStyle(
+                    fontFamily: 'Manrope',
+                    fontSize: 15,
+                    fontWeight: FontWeight.w800,
+                    color: Harvest.colors(context).ink,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _nutritionCard(
+                        context,
+                        title: 'Vitamin C',
+                        subtitle: 'Rich in antioxidants',
+                        icon: Icons.shield_outlined,
+                        color: const Color(0xFF16A34A),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _nutritionCard(
+                        context,
+                        title: 'Vitamin A',
+                        subtitle: 'Supports eye health',
+                        icon: Icons.visibility_outlined,
+                        color: const Color(0xFFEA580C),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _nutritionCard(
+                        context,
+                        title: 'Lycopene',
+                        subtitle: 'Good for heart',
+                        icon: Icons.favorite_outline_rounded,
+                        color: const Color(0xFFDC2626),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: _nutritionCard(
+                        context,
+                        title: 'Low Calories',
+                        subtitle: 'Only 18 kcal/100g',
+                        icon: Icons.bolt_rounded,
+                        color: const Color(0xFF059669),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 22),
+
+                // Related Products Strip
+                Text(
                   'Related Products',
                   style: TextStyle(
-                    fontSize: 16,
+                    fontFamily: 'Manrope',
+                    fontSize: 15,
                     fontWeight: FontWeight.w800,
-                    color: Harvest.ink,
+                    color: Harvest.colors(context).ink,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -1750,54 +1570,6 @@ class _ProductScreenState extends State<ProductScreen> {
                           ),
                         ),
                     ],
-                  ),
-                ),
-                const SizedBox(height: 24),
-
-                // Local Farmer Info Card
-                InkWell(
-                  borderRadius: BorderRadius.circular(18),
-                  onTap: () => openPage(context, FarmScreen(farm: farm)),
-                  child: Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: Harvest.canvas,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: Harvest.border),
-                    ),
-                    child: Row(
-                      children: [
-                        Photo(farm.image, width: 46, height: 46, radius: 14),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                farm.name,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 13,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                farm.location,
-                                style: const TextStyle(
-                                  color: Harvest.muted,
-                                  fontSize: 11,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(
-                          Icons.arrow_forward_ios,
-                          size: 12,
-                          color: Harvest.muted,
-                        ),
-                      ],
-                    ),
                   ),
                 ),
               ],
@@ -1862,9 +1634,9 @@ class FarmerTile extends StatelessWidget {
   Widget build(BuildContext context) => Container(
     margin: const EdgeInsets.only(bottom: 10),
     decoration: BoxDecoration(
-      color: Colors.white,
+      color: Harvest.colors(context).surface,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: Harvest.border),
+      border: Border.all(color: Harvest.colors(context).border),
     ),
     child: Material(
       color: Colors.transparent,
@@ -1877,12 +1649,12 @@ class FarmerTile extends StatelessWidget {
         ),
         subtitle: Text(
           '${farm.location} · ${farm.market}',
-          style: const TextStyle(fontSize: 12, color: Harvest.muted),
+          style: TextStyle(fontSize: 12, color: Harvest.colors(context).muted),
         ),
-        trailing: const Icon(
+        trailing: Icon(
           Icons.arrow_forward_ios,
           size: 13,
-          color: Harvest.muted,
+          color: Harvest.colors(context).muted,
         ),
         onTap: () => openPage(context, FarmScreen(farm: farm)),
       ),
@@ -1908,12 +1680,36 @@ class FarmScreen extends StatelessWidget {
     final products = store.products.where((p) => p.farmId == f.id).toList();
 
     return Scaffold(
-      backgroundColor: Harvest.cream,
+      backgroundColor: Harvest.colors(context).cream,
       body: CustomScrollView(
         slivers: [
           SliverAppBar(
             expandedHeight: 240,
             pinned: true,
+            actions: [
+              IconButton(
+                icon: Icon(
+                  store.isFollowed(f.id)
+                      ? Icons.favorite_rounded
+                      : Icons.favorite_border_rounded,
+                  color: store.isFollowed(f.id)
+                      ? const Color(0xFFEF4444)
+                      : Colors.white,
+                ),
+                tooltip: store.isFollowed(f.id)
+                    ? 'Unfollow Farm'
+                    : 'Follow Farm & Get Restock Alerts',
+                onPressed: () {
+                  store.toggleFollowed(f.id);
+                  notice(
+                    context,
+                    store.isFollowed(f.id)
+                        ? 'Following ${f.name}! Restock alerts activated.'
+                        : 'Unfollowed ${f.name}.',
+                  );
+                },
+              ),
+            ],
             flexibleSpace: FlexibleSpaceBar(
               background: Photo(f.image, radius: 0, width: double.infinity),
             ),
@@ -1924,34 +1720,126 @@ class FarmScreen extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Eyebrow(f.market),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(child: Eyebrow(f.market)),
+                      TextButton.icon(
+                        onPressed: () {
+                          store.toggleFollowed(f.id);
+                          notice(
+                            context,
+                            store.isFollowed(f.id)
+                                ? 'Following ${f.name}! Restock alerts activated.'
+                                : 'Unfollowed ${f.name}.',
+                          );
+                        },
+                        style: TextButton.styleFrom(
+                          backgroundColor: store.isFollowed(f.id)
+                              ? const Color(0xFF16A34A).withValues(alpha: 0.12)
+                              : Harvest.colors(context).surface,
+                          foregroundColor: store.isFollowed(f.id)
+                              ? const Color(0xFF16A34A)
+                              : Harvest.colors(context).ink,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                            side: BorderSide(
+                              color: store.isFollowed(f.id)
+                                  ? const Color(0xFF16A34A)
+                                  : Harvest.colors(context).border,
+                            ),
+                          ),
+                        ),
+                        icon: Icon(
+                          store.isFollowed(f.id)
+                              ? Icons.favorite_rounded
+                              : Icons.favorite_border_rounded,
+                          size: 16,
+                          color: store.isFollowed(f.id)
+                              ? const Color(0xFFEF4444)
+                              : Harvest.colors(context).muted,
+                        ),
+                        label: Text(
+                          store.isFollowed(f.id) ? 'Following' : 'Follow Farm',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 6),
                   Text(f.name, style: Harvest.editorial(32)),
                   const SizedBox(height: 6),
                   Row(
                     children: [
-                      const Icon(
+                      Icon(
                         Icons.location_on_outlined,
                         size: 16,
-                        color: Harvest.muted,
+                        color: Harvest.colors(context).muted,
                       ),
                       const SizedBox(width: 4),
-                      Text(
-                        f.location,
-                        style: const TextStyle(
-                          color: Harvest.muted,
-                          fontSize: 13,
+                      Expanded(
+                        child: Text(
+                          f.location,
+                          style: TextStyle(
+                            color: Harvest.colors(context).muted,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
                     ],
                   ),
+                  if (store.isFollowed(f.id)) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF16A34A).withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: const Color(
+                            0xFF16A34A,
+                          ).withValues(alpha: 0.25),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.notifications_active_outlined,
+                            size: 16,
+                            color: Color(0xFF16A34A),
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Personalized restock alerts enabled for this farm.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF16A34A),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Text(
                     f.description,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 14,
                       height: 1.5,
-                      color: Harvest.ink,
+                      color: Harvest.colors(context).ink,
                     ),
                   ),
                   const SizedBox(height: 24),
@@ -1970,46 +1858,490 @@ class FarmScreen extends StatelessWidget {
   }
 }
 
-class WishlistScreen extends StatelessWidget {
+class WishlistScreen extends StatefulWidget {
   const WishlistScreen({super.key});
+
+  @override
+  State<WishlistScreen> createState() => _WishlistScreenState();
+}
+
+class _WishlistScreenState extends State<WishlistScreen> {
+  int _selectedTab = 0; // 0: Products, 1: Farmers
+  final TextEditingController _search = TextEditingController();
+
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final store = HarvestScope.of(context);
+    final palette = Harvest.colors(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    final query = _search.text.trim().toLowerCase();
     final savedProducts = store.products
         .where((p) => store.saved.contains(p.id))
+        .where(
+          (p) =>
+              query.isEmpty ||
+              '${p.name} ${p.category} ${store.farm(p.farmId).name}'
+                  .toLowerCase()
+                  .contains(query),
+        )
+        .toList();
+    final followedFarms = store.farms
+        .where((f) => store.isFollowed(f.id))
+        .where(
+          (f) =>
+              query.isEmpty ||
+              '${f.name} ${f.location} ${f.market}'.toLowerCase().contains(
+                query,
+              ),
+        )
         .toList();
 
     return Scaffold(
-      backgroundColor: Harvest.cream,
+      backgroundColor: palette.canvas,
       appBar: AppBar(
-        title: const Text(
-          'Saved for Later',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          onPressed: () => Navigator.maybePop(context),
         ),
-      ),
-      body: savedProducts.isEmpty
-          ? EmptyState(
-              icon: Icons.favorite_border,
-              title: 'Save something fresh',
-              message: 'Keep your favourite local produce close at hand. Tap the heart on any harvest to save it for later.',
-              action: 'Explore fresh picks',
-              onAction: () => Navigator.pop(context),
-            )
-          : ListView(
-              padding: const EdgeInsets.all(20),
-              children: [
-                PageHeading(
-                  'Saved Harvests',
-                  eyebrow: '${savedProducts.length} items saved',
-                  subtitle: 'Items stay saved in your personal pantry list.',
+        title: Text(
+          'My Wishlist',
+          style: TextStyle(
+            fontFamily: 'Manrope',
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+            color: palette.ink,
+          ),
+        ),
+        actions: [
+          IconButton(
+            icon: Badge(
+              isLabelVisible: store.basketCount > 0,
+              label: Text(
+                '${store.basketCount}',
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
                 ),
-                ProductGrid(
-                  products: savedProducts,
-                  onOpen: (p) => openPage(context, ProductScreen(product: p)),
+              ),
+              backgroundColor: const Color(0xFFEF4444),
+              child: Icon(Icons.shopping_bag_outlined, size: 22),
+            ),
+            onPressed: () => openPage(context, const BasketScreen()),
+          ),
+          const SizedBox(width: 6),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+        children: [
+          // Tab selection pills: Products (6) | Farmers (3)
+          Row(
+            children: [
+              GestureDetector(
+                onTap: () => setState(() => _selectedTab = 0),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _selectedTab == 0 ? palette.green : palette.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _selectedTab == 0 ? palette.green : palette.border,
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Text(
+                    'Products (${savedProducts.length})',
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 12,
+                      fontWeight: _selectedTab == 0
+                          ? FontWeight.w800
+                          : FontWeight.w600,
+                      color: _selectedTab == 0 ? Colors.white : palette.ink,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () => setState(() => _selectedTab = 1),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _selectedTab == 1 ? palette.green : palette.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: _selectedTab == 1 ? palette.green : palette.border,
+                      width: 1.2,
+                    ),
+                  ),
+                  child: Text(
+                    'Farmers (${followedFarms.length})',
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 12,
+                      fontWeight: _selectedTab == 1
+                          ? FontWeight.w800
+                          : FontWeight.w600,
+                      color: _selectedTab == 1 ? Colors.white : palette.ink,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          SearchBox(
+            controller: _search,
+            hint: _selectedTab == 0
+                ? 'Search saved products…'
+                : 'Search followed farmers…',
+            onChanged: (_) => setState(() {}),
+            voiceSearch: true,
+          ),
+          const SizedBox(height: 14),
+
+          if (_selectedTab == 0) ...[
+            if (savedProducts.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(40),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.favorite_border_rounded,
+                        size: 48,
+                        color: palette.muted,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Your Wishlist is Empty',
+                        style: TextStyle(
+                          fontFamily: 'Manrope',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: palette.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Tap the heart icon on any produce to save it here.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Manrope',
+                          fontSize: 12,
+                          color: palette.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              for (final p in savedProducts) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: palette.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: palette.border, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.20 : 0.03,
+                        ),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      // Photo with red heart badge
+                      Stack(
+                        children: [
+                          ClipRRect(
+                            borderRadius: BorderRadius.circular(16),
+                            child: Photo(
+                              p.image,
+                              bytes: p.photo,
+                              width: 72,
+                              height: 72,
+                              radius: 16,
+                            ),
+                          ),
+                          Positioned(
+                            top: 4,
+                            right: 4,
+                            child: GestureDetector(
+                              onTap: () {
+                                store.toggleSaved(p.id);
+                                HapticFeedback.lightImpact();
+                              },
+                              child: Container(
+                                width: 22,
+                                height: 22,
+                                decoration: const BoxDecoration(
+                                  color: Colors.white,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.favorite_rounded,
+                                  size: 13,
+                                  color: Color(0xFFEF4444),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(width: 14),
+
+                      // Produce Details
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              p.name,
+                              style: const TextStyle(
+                                fontFamily: 'Manrope',
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${money(p.price)} / ${p.unit}',
+                              style: TextStyle(
+                                fontFamily: 'Manrope',
+                                fontWeight: FontWeight.w700,
+                                fontSize: 13,
+                                color: palette.green,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              store.farm(p.farmId).name,
+                              style: TextStyle(
+                                fontFamily: 'Manrope',
+                                fontSize: 11,
+                                color: palette.muted,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+
+                      // Add to Cart Button
+                      FilledButton.icon(
+                        onPressed: () {
+                          store.setQuantity(
+                            p.id,
+                            (store.basket[p.id] ?? 0) + 1,
+                          );
+                          HapticFeedback.mediumImpact();
+                          notice(context, 'Added ${p.name} to basket');
+                        },
+                        icon: const Icon(
+                          Icons.add_rounded,
+                          size: 16,
+                          color: Colors.white,
+                        ),
+                        label: const Text(
+                          'Add',
+                          style: TextStyle(
+                            fontFamily: 'Manrope',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: palette.green,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
-            ),
+          ] else ...[
+            if (followedFarms.isEmpty)
+              Padding(
+                padding: const EdgeInsets.all(40),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.storefront_outlined,
+                        size: 48,
+                        color: palette.muted,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        'No Followed Farmers',
+                        style: TextStyle(
+                          fontFamily: 'Manrope',
+                          fontSize: 16,
+                          fontWeight: FontWeight.w800,
+                          color: palette.ink,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Follow local growers to see them here and get restock updates.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontFamily: 'Manrope',
+                          fontSize: 12,
+                          color: palette.muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else
+              for (final f in followedFarms) ...[
+                Container(
+                  margin: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: palette.surface,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: palette.border, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.20 : 0.03,
+                        ),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(16),
+                        child: Photo(
+                          f.image,
+                          width: 58,
+                          height: 58,
+                          radius: 16,
+                        ),
+                      ),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              f.name,
+                              style: const TextStyle(
+                                fontFamily: 'Manrope',
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              f.location,
+                              style: TextStyle(
+                                fontFamily: 'Manrope',
+                                fontSize: 11,
+                                color: palette.muted,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              children: [
+                                const Icon(
+                                  Icons.storefront_outlined,
+                                  size: 14,
+                                  color: Color(0xFFF59E0B),
+                                ),
+                                const SizedBox(width: 3),
+                                const Text(
+                                  'View farm',
+                                  style: TextStyle(
+                                    fontFamily: 'Manrope',
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      ),
+                      OutlinedButton(
+                        onPressed: () => openPage(context, FarmScreen(farm: f)),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: palette.green),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 6,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          minimumSize: Size.zero,
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: Text(
+                          'View',
+                          style: TextStyle(
+                            fontFamily: 'Manrope',
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: palette.green,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+          ],
+        ],
+      ),
     );
   }
 }
@@ -2020,64 +2352,68 @@ class BasketScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final store = HarvestScope.of(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
     final items = store.basket.entries.map((e) {
       final p = store.product(e.key)!;
       return (p, e.value);
     }).toList();
 
     return Scaffold(
-      backgroundColor: Harvest.cream,
+      backgroundColor: Harvest.colors(context).cream,
       appBar: AppBar(
         title: const Text(
-          'Your Basket',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+          'My Cart',
+          style: TextStyle(
+            fontFamily: 'Manrope',
+            fontWeight: FontWeight.w800,
+            fontSize: 18,
+          ),
         ),
         actions: [
           if (items.isNotEmpty)
-            TextButton(
-              onPressed: () => store.clearBasket(),
-              child: const Text(
-                'Clear',
-                style: TextStyle(color: Harvest.danger, fontSize: 12),
+            IconButton(
+              tooltip: 'Clear Cart',
+              icon: const Icon(
+                Icons.delete_outline_rounded,
+                color: Harvest.danger,
               ),
+              onPressed: () => store.clearBasket(),
             ),
         ],
       ),
       body: items.isEmpty
           ? EmptyState(
               icon: Icons.shopping_basket_outlined,
-              title: 'Your basket is empty',
-              message: 'Browse our local growers to discover fruits, vegetables, and pantry items harvested fresh today.',
+              title: 'Your cart is empty',
+              message:
+                  'Browse our local growers to discover fruits, vegetables, and pantry items harvested fresh today.',
               action: 'Start Shopping',
               onAction: () => Navigator.pop(context),
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 100),
               children: [
-                PageHeading(
-                  'Market Basket',
-                  eyebrow: '${store.basketCount} items from local farms',
-                  subtitle:
-                      'Direct from field to table with zero intermediaries.',
-                ),
                 for (final (p, qty) in items) ...[
                   Container(
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.white,
+                      color: Harvest.colors(context).surface,
                       borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: Harvest.border),
+                      border: Border.all(color: Harvest.colors(context).border),
                       boxShadow: Harvest.cardShadow,
                     ),
                     child: Row(
                       children: [
-                        Photo(
-                          p.image,
-                          bytes: p.photo,
-                          width: 68,
-                          height: 68,
-                          radius: 14,
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(14),
+                          child: Photo(
+                            p.image,
+                            bytes: p.photo,
+                            width: 68,
+                            height: 68,
+                            radius: 14,
+                          ),
                         ),
                         const SizedBox(width: 14),
                         Expanded(
@@ -2087,97 +2423,259 @@ class BasketScreen extends StatelessWidget {
                               Text(
                                 p.name,
                                 style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 14,
+                                  fontFamily: 'Manrope',
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 14.5,
                                 ),
                               ),
                               const SizedBox(height: 2),
                               Text(
-                                '${money(p.price)} / ${p.unit}',
-                                style: const TextStyle(
+                                'Rs. ${(p.price / 100).toStringAsFixed(0)} / ${p.unit}',
+                                style: TextStyle(
+                                  fontFamily: 'Manrope',
                                   fontSize: 12,
-                                  color: Harvest.muted,
+                                  color: Harvest.colors(context).muted,
                                 ),
                               ),
-                              const SizedBox(height: 4),
-                              Text(
-                                money(p.price * qty),
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: Harvest.forest,
-                                ),
+                              const SizedBox(height: 8),
+                              QuantityStepper(
+                                value: qty,
+                                max: p.stock,
+                                onChanged: (newQty) =>
+                                    store.setQuantity(p.id, newQty),
                               ),
                             ],
                           ),
                         ),
-                        QuantityStepper(
-                          value: qty,
-                          max: p.stock,
-                          onChanged: (newQty) =>
-                              store.setQuantity(p.id, newQty),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            IconButton(
+                              padding: EdgeInsets.zero,
+                              constraints: const BoxConstraints(),
+                              icon: Icon(
+                                Icons.delete_outline_rounded,
+                                size: 18,
+                                color: Harvest.colors(context).muted,
+                              ),
+                              onPressed: () => store.setQuantity(p.id, 0),
+                            ),
+                            const SizedBox(height: 18),
+                            Text(
+                              money(p.price * qty),
+                              style: const TextStyle(
+                                fontFamily: 'Manrope',
+                                fontWeight: FontWeight.w800,
+                                fontSize: 14,
+                                color: Color(0xFF16A34A),
+                              ),
+                            ),
+                          ],
                         ),
                       ],
                     ),
                   ),
                 ],
-                const SizedBox(height: 16),
 
-                // Order summary breakdown
-                Container(
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Harvest.border),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                // "+ Add More Items - Explore more fresh products >" button matching Image 3 Screen 5
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => Navigator.pop(context),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        vertical: 14,
+                        horizontal: 16,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Harvest.colors(context).surface,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: const Color(0xFF16A34A).withValues(alpha: 0.4),
+                          width: 1.2,
+                        ),
+                      ),
+                      child: const Row(
                         children: [
-                          const Text(
-                            'Subtotal',
-                            style: TextStyle(color: Harvest.muted),
+                          Icon(
+                            Icons.add_circle_outline_rounded,
+                            size: 20,
+                            color: Color(0xFF16A34A),
                           ),
-                          Text(
-                            money(store.basketTotal),
-                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          SizedBox(width: 10),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Add More Items',
+                                  style: TextStyle(
+                                    fontFamily: 'Manrope',
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w800,
+                                    color: Color(0xFF16A34A),
+                                  ),
+                                ),
+                                Text(
+                                  'Explore more fresh products from local farms',
+                                  style: TextStyle(
+                                    fontFamily: 'Manrope',
+                                    fontSize: 11,
+                                    color: Colors.grey,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.chevron_right_rounded,
+                            color: Color(0xFF16A34A),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      const Row(
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+
+                // Order summary breakdown matching Image 3 Screen 5
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: Harvest.colors(context).surface,
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: Harvest.colors(context).border),
+                    boxShadow: Harvest.cardShadow,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Order Summary',
+                        style: TextStyle(
+                          fontFamily: 'Manrope',
+                          fontWeight: FontWeight.w800,
+                          fontSize: 15,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           Text(
-                            'Simulated Delivery',
-                            style: TextStyle(color: Harvest.muted),
+                            'Subtotal',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              color: Harvest.colors(context).muted,
+                              fontSize: 13,
+                            ),
                           ),
                           Text(
-                            'Free',
-                            style: TextStyle(
+                            money(store.basketTotal),
+                            style: const TextStyle(
+                              fontFamily: 'Manrope',
                               fontWeight: FontWeight.w700,
-                              color: Harvest.success,
+                              fontSize: 13,
                             ),
                           ),
                         ],
                       ),
-                      const Divider(height: 20),
+                      const SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Pickup',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              color: Harvest.colors(context).muted,
+                              fontSize: 13,
+                            ),
+                          ),
+                          const Text(
+                            'Requested',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w700,
+                              fontSize: 13,
+                              color: Color(0xFF16A34A),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const Divider(height: 22),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
                           const Text(
-                            'Total Amount',
+                            'Total',
                             style: TextStyle(
+                              fontFamily: 'Manrope',
                               fontWeight: FontWeight.w800,
                               fontSize: 16,
                             ),
                           ),
                           Text(
                             money(store.basketTotal),
-                            style: Harvest.editorial(22, color: Harvest.forest),
+                            style: const TextStyle(
+                              fontFamily: 'Manrope',
+                              fontWeight: FontWeight.w900,
+                              fontSize: 18,
+                              color: Color(0xFF1E5631),
+                            ),
                           ),
                         ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 14),
+
+                // Delivery / Pickup Info Card matching Image 3 Screen 5
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: isDark
+                        ? const Color(0xFF14241B)
+                        : const Color(0xFFE8F5EE),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: const Color(0xFF16A34A).withValues(alpha: 0.3),
+                    ),
+                  ),
+                  child: const Row(
+                    children: [
+                      Icon(
+                        Icons.local_shipping_outlined,
+                        color: Color(0xFF16A34A),
+                        size: 22,
+                      ),
+                      SizedBox(width: 12),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Farm pickup',
+                              style: TextStyle(
+                                fontFamily: 'Manrope',
+                                fontSize: 13,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF1E5631),
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Request a pickup window when confirming your order.',
+                              style: TextStyle(
+                                fontFamily: 'Manrope',
+                                fontSize: 11,
+                                color: Color(0xFF3D7A44),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
@@ -2187,9 +2685,43 @@ class BasketScreen extends StatelessWidget {
       bottomNavigationBar: items.isEmpty
           ? null
           : BottomAction(
-              child: HarvestButton(
-                label: 'Continue to Checkout · ${money(store.basketTotal)}',
-                onPressed: () => openPage(context, const CheckoutScreen()),
+              child: SizedBox(
+                width: double.infinity,
+                height: 52,
+                child: ElevatedButton(
+                  onPressed: () => openPage(context, const CheckoutScreen()),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1E5631),
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                  ),
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Continue to Checkout · ${money(store.basketTotal)}',
+                          style: const TextStyle(
+                            fontFamily: 'Manrope',
+                            fontSize: 15,
+                            fontWeight: FontWeight.w800,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        const Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 18,
+                          color: Colors.white,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
               ),
             ),
     );
@@ -2205,7 +2737,7 @@ class CheckoutScreen extends StatefulWidget {
 
 class _CheckoutScreenState extends State<CheckoutScreen> {
   final TextEditingController _address = TextEditingController();
-  String _selectedPickupSlot = 'Morning (9:00 AM - 12:00 PM)';
+  String? _selectedPickupSlot;
   bool _busy = false;
   bool _initialized = false;
 
@@ -2228,165 +2760,324 @@ class _CheckoutScreenState extends State<CheckoutScreen> {
   Future<void> _confirm() async {
     final store = HarvestScope.of(context);
     if (_address.text.trim().isEmpty) {
-      notice(context, 'Please enter a valid delivery address', isError: true);
+      notice(context, 'Please enter a contact address', isError: true);
       return;
     }
 
     setState(() => _busy = true);
-    await Future<void>.delayed(Duration.zero);
-    {
+    if (!mounted) return;
+    try {
+      final created = await store.checkout(
+        _address.text.trim(),
+        pickupSlot: _selectedPickupSlot,
+      );
       if (!mounted) return;
-      try {
-        final created = await store.checkout(_address.text.trim());
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ConfirmationScreen(orders: created),
-          ),
-        );
-      } catch (e) {
-        notice(context, e.toString(), isError: true);
-        setState(() => _busy = false);
-      }
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => ConfirmationScreen(orders: created)),
+      );
+    } catch (e) {
+      notice(context, e.toString(), isError: true);
+      setState(() => _busy = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final store = HarvestScope.of(context);
+    final palette = Harvest.colors(context);
+
+    final basketFarms = store.basket.keys
+        .map((id) => store.farm(store.product(id)!.farmId))
+        .toList();
+    final timeSlots = basketFarms.isEmpty
+        ? <String>[]
+        : basketFarms.first.pickupSlots
+              .where(
+                (slot) => basketFarms.every(
+                  (farm) => farm.pickupSlots.contains(slot),
+                ),
+              )
+              .toList();
+    if (!timeSlots.contains(_selectedPickupSlot)) _selectedPickupSlot = null;
 
     return Scaffold(
-      backgroundColor: Harvest.cream,
+      backgroundColor: palette.canvas,
       appBar: AppBar(
-        title: const Text(
-          'Review Order',
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 18),
+          onPressed: () => Navigator.maybePop(context),
+        ),
+        title: Text(
+          'Checkout',
+          style: TextStyle(
+            fontFamily: 'Manrope',
+            fontWeight: FontWeight.w800,
+            fontSize: 20,
+            color: palette.ink,
+          ),
         ),
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
+        padding: const EdgeInsets.fromLTRB(16, 6, 16, 100),
         children: [
-          const PageHeading(
-            'Order Confirmation',
-            eyebrow: 'Simulated Order Placement',
-            subtitle: 'Per SRS specifications, no actual payment gateway is involved. Review and confirm below.',
-          ),
-          const InfoNote(
-            'Demonstration Mode: Confirming this order updates inventory and sends orders directly to your farmer queue.',
-          ),
-          const SizedBox(height: 20),
-
-          const Text(
-            'Delivery Address',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _address,
-            maxLines: 2,
-            decoration: const InputDecoration(
-              hintText: 'Enter street, neighborhood, city…',
-              prefixIcon: Icon(
-                Icons.location_on_outlined,
-                color: Harvest.forest,
-              ),
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Optional Pickup Slot module (per SRS Section 16 & 32)
-          const Text(
-            'Pickup / Delivery Window (Optional)',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-          ),
-          const SizedBox(height: 8),
-          Wrap(
-            spacing: 8,
-            children:
-                [
-                  'Morning (9:00 AM - 12:00 PM)',
-                  'Afternoon (2:00 PM - 5:00 PM)',
-                ].map((slot) {
-                  final sel = _selectedPickupSlot == slot;
-                  return ChoiceChip(
-                    label: Text(slot),
-                    selected: sel,
-                    selectedColor: Harvest.forest,
-                    labelStyle: TextStyle(
-                      color: sel ? Colors.white : Harvest.ink,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+          // Step 1: Customer contact address
+          _stepHeader(
+            1,
+            'Order contact address',
+            trailing: 'Change',
+            onTrailingTap: () {
+              // Edit address dialog
+              showDialog<void>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text(
+                    'Edit Contact Address',
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontWeight: FontWeight.w800,
                     ),
-                    onSelected: (_) =>
-                        setState(() => _selectedPickupSlot = slot),
-                  );
-                }).toList(),
-          ),
-          const SizedBox(height: 24),
-
-          // Basket items review
-          const Text(
-            'Ordered Items',
-            style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
+                  ),
+                  content: TextField(controller: _address, maxLines: 3),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('Done'),
+                    ),
+                  ],
+                ),
+              );
+            },
+            palette: palette,
           ),
           const SizedBox(height: 10),
-          for (final entry in store.basket.entries) ...[
-            Builder(
-              builder: (context) {
-                final p = store.product(entry.key);
-                if (p == null) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
+          Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: palette.border, width: 1.2),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Icon(
+                  Icons.location_on_rounded,
+                  color: Color(0xFF10B981),
+                  size: 22,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${entry.value}x',
+                        store.account.name,
                         style: const TextStyle(
+                          fontFamily: 'Manrope',
                           fontWeight: FontWeight.w800,
-                          color: Harvest.forest,
+                          fontSize: 14,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          p.name,
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      ),
+                      const SizedBox(height: 3),
                       Text(
-                        money(p.price * entry.value),
-                        style: const TextStyle(fontWeight: FontWeight.w700),
+                        _address.text,
+                        style: TextStyle(
+                          fontFamily: 'Manrope',
+                          fontSize: 12,
+                          color: palette.muted,
+                          height: 1.35,
+                        ),
                       ),
+                      const SizedBox(height: 3),
+                      if (store.account.phone.isNotEmpty)
+                        Text(
+                          store.account.phone,
+                          style: TextStyle(
+                            fontFamily: 'Manrope',
+                            fontSize: 12,
+                            color: palette.muted,
+                          ),
+                        ),
                     ],
                   ),
-                );
-              },
+                ),
+              ],
             ),
-          ],
-          const Divider(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Total to confirm',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16),
-              ),
-              Text(
-                money(store.basketTotal),
-                style: Harvest.editorial(24, color: Harvest.forest),
-              ),
-            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Step 2: Pickup is recorded as a customer-requested time window.
+          _stepHeader(2, 'Farm pickup', palette: palette),
+          const SizedBox(height: 10),
+          const InfoNote(
+            'Choose a farmer-published window, or book later from Orders. Only times offered by every farm in this basket appear here.',
+          ),
+          const SizedBox(height: 20),
+
+          // Step 3: Pickup time request
+          _stepHeader(3, 'Available pickup windows', palette: palette),
+          if (timeSlots.isEmpty)
+            const InfoNote(
+              'No shared pickup windows published. Place your order and arrange pickup with each farm.',
+            ),
+          TextButton(
+            onPressed: () => setState(() => _selectedPickupSlot = null),
+            child: const Text('Arrange pickup later'),
+          ),
+          const SizedBox(height: 12),
+          GridView.count(
+            crossAxisCount: 2,
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            mainAxisSpacing: 10,
+            crossAxisSpacing: 10,
+            childAspectRatio: 2.8,
+            children: timeSlots.map((slot) {
+              final sel = _selectedPickupSlot == slot;
+              return GestureDetector(
+                onTap: () => setState(() => _selectedPickupSlot = slot),
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  decoration: BoxDecoration(
+                    color: sel ? palette.green : palette.surface,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(
+                      color: sel ? palette.green : palette.border,
+                      width: 1.2,
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    slot,
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 12,
+                      fontWeight: sel ? FontWeight.w800 : FontWeight.w600,
+                      color: sel ? Colors.white : palette.ink,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+          const SizedBox(height: 20),
+
+          const InfoNote('This is a simulated order. No payment is collected.'),
+          const SizedBox(height: 16),
+
+          // Confirmed totals are based on the live basket.
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: palette.surface,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: palette.border, width: 1.2),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Order Summary',
+                      style: TextStyle(
+                        fontFamily: 'Manrope',
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${store.basketCount} items',
+                      style: TextStyle(
+                        fontFamily: 'Manrope',
+                        fontSize: 12,
+                        color: palette.muted,
+                      ),
+                    ),
+                  ],
+                ),
+                Text(
+                  money(store.basketTotal),
+                  style: TextStyle(
+                    fontFamily: 'Manrope',
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: palette.green,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
       bottomNavigationBar: BottomAction(
         child: HarvestButton(
-          label: 'Confirm order · ${money(store.basketTotal)}',
+          label: 'Place simulated order · ${money(store.basketTotal)}',
           busy: _busy,
           onPressed: _busy ? null : _confirm,
         ),
       ),
+    );
+  }
+
+  Widget _stepHeader(
+    int stepNum,
+    String title, {
+    String? trailing,
+    VoidCallback? onTrailingTap,
+    required HarvestPalette palette,
+  }) {
+    return Row(
+      children: [
+        Container(
+          width: 26,
+          height: 26,
+          decoration: const BoxDecoration(
+            color: Color(0xFF10B981),
+            shape: BoxShape.circle,
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            '$stepNum',
+            style: const TextStyle(
+              fontFamily: 'Manrope',
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            title,
+            style: TextStyle(
+              fontFamily: 'Manrope',
+              fontWeight: FontWeight.w800,
+              fontSize: 15,
+              color: palette.ink,
+            ),
+          ),
+        ),
+        if (trailing != null)
+          GestureDetector(
+            onTap: onTrailingTap,
+            child: Text(
+              trailing,
+              style: const TextStyle(
+                fontFamily: 'Manrope',
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF2563EB),
+              ),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -2397,7 +3088,7 @@ class ConfirmationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Harvest.cream,
+    backgroundColor: Harvest.colors(context).cream,
     body: SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(24),
@@ -2409,14 +3100,14 @@ class ConfirmationScreen extends StatelessWidget {
             Container(
               width: 90,
               height: 90,
-              decoration: const BoxDecoration(
-                color: Harvest.sage,
+              decoration: BoxDecoration(
+                color: Harvest.colors(context).paleLeaf,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(
+              child: Icon(
                 Icons.check_circle_outline,
                 size: 48,
-                color: Harvest.forest,
+                color: Harvest.colors(context).green,
               ),
             ),
             const SizedBox(height: 24),
@@ -2425,8 +3116,8 @@ class ConfirmationScreen extends StatelessWidget {
             Text(
               'Your order ${orders.map((o) => o.id).join(', ')} has been placed directly with the growers.',
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: Harvest.muted,
+              style: TextStyle(
+                color: Harvest.colors(context).muted,
                 fontSize: 14,
                 height: 1.5,
               ),
@@ -2435,9 +3126,9 @@ class ConfirmationScreen extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: Colors.white,
+                color: Harvest.colors(context).surface,
                 borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Harvest.border),
+                border: Border.all(color: Harvest.colors(context).border),
               ),
               child: Column(
                 children: [
@@ -2445,15 +3136,18 @@ class ConfirmationScreen extends StatelessWidget {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text(
-                          o.farmName,
-                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        Expanded(
+                          child: Text(
+                            o.farmName,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
+                        const SizedBox(width: 8),
                         Text(
                           money(o.total),
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontWeight: FontWeight.w800,
-                            color: Harvest.forest,
+                            color: Harvest.colors(context).green,
                           ),
                         ),
                       ],
@@ -2482,1093 +3176,184 @@ class ConfirmationScreen extends StatelessWidget {
 }
 
 /// Today's Weather & Crop Notes Screen matching Reference Image 1 (Screen 3)
-class TodaysWeatherScreen extends StatefulWidget {
-  const TodaysWeatherScreen({super.key});
-
-  @override
-  State<TodaysWeatherScreen> createState() => _TodaysWeatherScreenState();
-}
-
-class _TodaysWeatherScreenState extends State<TodaysWeatherScreen> {
-  final List<({String photo, String timestamp, String note})> _notes = [
-    (
-      photo: 'farm',
-      timestamp: 'May 24 . 5:43pm',
-      note: 'Excellent harvest, the grapes have a rich flavor and aroma',
-    ),
-    (
-      photo: 'tomatoes',
-      timestamp: 'May 24 . 3:15pm',
-      note:
-          'Foliage canopy inspected, healthy fruit set with zero blight signs',
-    ),
-    (
-      photo: 'strawberries',
-      timestamp: 'May 23 . 10:20am',
-      note: 'Sweet aroma rising from rows, sugar brix testing at 12.4 degrees',
-    ),
-    (
-      photo: 'potatoes',
-      timestamp: 'May 22 . 8:45am',
-      note: 'Optimal tuber formation, soil moisture maintained at 72%',
-    ),
-  ];
-
-  void _showAddNoteDialog() {
-    final noteCtrl = TextEditingController();
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          20,
-          20,
-          MediaQuery.of(ctx).viewInsets.bottom + 24,
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Add Crop Field Note',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close),
-                  onPressed: () => Navigator.pop(ctx),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: noteCtrl,
-              maxLines: 3,
-              decoration: InputDecoration(
-                hintText:
-                    'Record observations (e.g. soil moisture, harvest aroma)…',
-                fillColor: Harvest.canvas,
-                filled: true,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Harvest.border),
-                ),
-              ),
-            ),
-            const SizedBox(height: 18),
-            HarvestButton(
-              label: 'Save Field Note',
-              icon: Icons.check,
-              onPressed: () {
-                final txt = noteCtrl.text.trim();
-                if (txt.isNotEmpty) {
-                  setState(() {
-                    _notes.insert(0, (
-                      photo: 'farm',
-                      timestamp: 'Just now',
-                      note: txt,
-                    ));
-                  });
-                  HapticFeedback.lightImpact();
-                  Navigator.pop(ctx);
-                  notice(context, 'Field observation recorded');
-                }
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF7FAF8),
-    appBar: AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      centerTitle: true,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 14),
-        child: Center(
-          child: CircularNavButton(
-            icon: Icons.arrow_back,
-            onPressed: () => Navigator.pop(context),
-          ),
-        ),
-      ),
-      title: const Text(
-        'Todays Weather',
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: Harvest.ink,
-        ),
-      ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 14),
-          child: CircularNavButton(
-            icon: Icons.notifications_none_outlined,
-            hasBadge: true,
-            onPressed: () =>
-                notice(context, 'Advisory: Optimal harvest conditions today!'),
-          ),
-        ),
-      ],
-    ),
-    body: ListView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
-      children: [
-        // 1. Deep Emerald Weather Banner matching Reference 1 (Screen 3)
-        Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            color: Harvest.forest,
-            borderRadius: BorderRadius.circular(26),
-            boxShadow: [
-              BoxShadow(
-                color: Harvest.forest.withValues(alpha: 0.25),
-                blurRadius: 20,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Row(
-                children: [
-                  Icon(
-                    Icons.location_on_outlined,
-                    color: Color(0xFFD4E3D7),
-                    size: 16,
-                  ),
-                  SizedBox(width: 6),
-                  Text(
-                    'Bekasi Timur, 27 Nov 2023',
-                    style: TextStyle(
-                      color: Color(0xFFD4E3D7),
-                      fontSize: 13,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '33 °C',
-                        style: TextStyle(
-                          fontSize: 42,
-                          fontWeight: FontWeight.w900,
-                          color: Colors.white,
-                          letterSpacing: -1.0,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Humidity 76%',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: Colors.white.withValues(alpha: 0.8),
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.end,
-                    children: [
-                      Container(
-                        width: 58,
-                        height: 58,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          shape: BoxShape.circle,
-                        ),
-                        child: const Icon(
-                          Icons.cloud_queue_rounded,
-                          color: Color(0xFFFDE68A),
-                          size: 34,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Cloudy',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 10,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.12),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(Icons.eco, color: Color(0xFF34D399), size: 16),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Today is a good day to apply pesticides.',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 28),
-
-        // 2. Crop Notes Section matching Reference 1 (Screen 3)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Notes',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: Harvest.ink,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(
-                Icons.arrow_forward,
-                size: 20,
-                color: Harvest.muted,
-              ),
-              onPressed: _showAddNoteDialog,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        for (final item in _notes)
-          CropNoteTile(
-            photo: item.photo,
-            timestamp: item.timestamp,
-            note: item.note,
-            onTap: () => notice(context, 'Field log: ${item.note}'),
-          ),
-      ],
-    ),
-    bottomNavigationBar: BottomAction(
-      child: SizedBox(
-        width: double.infinity,
-        height: 50,
-        child: FilledButton.icon(
-          icon: const Icon(Icons.add, size: 20, color: Colors.white),
-          label: const Text(
-            'Add New Note',
-            style: TextStyle(fontSize: 15, fontWeight: FontWeight.w800),
-          ),
-          style: FilledButton.styleFrom(
-            backgroundColor: Harvest.forest,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          onPressed: _showAddNoteDialog,
-        ),
-      ),
-    ),
-  );
-}
-
-/// Statistic Screen matching Reference Image 2 (Screen 4)
-class StatisticScreen extends StatefulWidget {
-  const StatisticScreen({super.key});
-
-  @override
-  State<StatisticScreen> createState() => _StatisticScreenState();
-}
-
-class _StatisticScreenState extends State<StatisticScreen> {
-  String _period = 'Weekly';
-  final Set<String> _joinedCommunities = {'Farming Community'};
-
-  final List<({String name, String author, String location, String photo})>
-  _communities = [
-    (
-      name: 'Farming Community',
-      author: 'Gun Hawkins',
-      location: 'New York, USA',
-      photo: 'farm',
-    ),
-    (
-      name: 'Agriculture Community',
-      author: 'Gun Hawkins',
-      location: 'New York, USA',
-      photo: 'market',
-    ),
-    (
-      name: 'Organic Growers Guild',
-      author: 'Elena Vance',
-      location: 'California, USA',
-      photo: 'tomatoes',
-    ),
-    (
-      name: 'Permaculture Collective',
-      author: 'Marcus Thorne',
-      location: 'Oregon, USA',
-      photo: 'strawberries',
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF7FAF8),
-    appBar: AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      centerTitle: true,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 14),
-        child: Center(
-          child: CircularNavButton(
-            icon: Icons.arrow_back,
-            onPressed: () => Navigator.pop(context),
-          ),
-        ),
-      ),
-      title: const Text(
-        'Statistic',
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: Harvest.ink,
-        ),
-      ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 14),
-          child: CircularNavButton(
-            icon: Icons.notifications_none_outlined,
-            hasBadge: true,
-            onPressed: () =>
-                notice(context, 'Growth alert: Sprout reached 9.5cm!'),
-          ),
-        ),
-      ],
-    ),
-    body: ListView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
-      children: [
-        // 1. Growth Spline Area Chart matching Reference 2 (Screen 4)
-        GrowthAreaChart(
-          title: 'Growth',
-          period: _period,
-          onPeriodChange: () {
-            setState(() {
-              _period = _period == 'Weekly' ? 'Monthly' : 'Weekly';
-            });
-            HapticFeedback.selectionClick();
-          },
-        ),
-        const SizedBox(height: 28),
-
-        // 2. Community List matching Reference 2 (Screen 4)
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Community',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: Harvest.ink,
-              ),
-            ),
-            TextButton(
-              onPressed: () =>
-                  notice(context, 'Showing all verified local grower circles'),
-              child: const Text(
-                'View all',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        for (final comm in _communities)
-          Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: Harvest.border),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x06000000),
-                  blurRadius: 10,
-                  offset: Offset(0, 2),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(14),
-                  child: Photo(comm.photo, width: 48, height: 48, radius: 14),
-                ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        comm.name,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                          color: Harvest.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${comm.author} · ${comm.location}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Harvest.muted,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 32,
-                  child: OutlinedButton(
-                    onPressed: () {
-                      setState(() {
-                        if (_joinedCommunities.contains(comm.name)) {
-                          _joinedCommunities.remove(comm.name);
-                        } else {
-                          _joinedCommunities.add(comm.name);
-                        }
-                      });
-                      HapticFeedback.lightImpact();
-                    },
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: _joinedCommunities.contains(comm.name)
-                          ? Colors.white
-                          : Harvest.forest,
-                      backgroundColor: _joinedCommunities.contains(comm.name)
-                          ? Harvest.forest
-                          : Colors.white,
-                      side: BorderSide(
-                        color: _joinedCommunities.contains(comm.name)
-                            ? Harvest.forest
-                            : Harvest.border,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 14),
-                    ),
-                    child: Text(
-                      _joinedCommunities.contains(comm.name)
-                          ? 'Joined'
-                          : 'Gabung',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    ),
-  );
-}
-
-/// Planting Screen matching Reference Image 2 (Screen 5)
-class PlantingScreen extends StatefulWidget {
-  const PlantingScreen({super.key});
-
-  @override
-  State<PlantingScreen> createState() => _PlantingScreenState();
-}
-
-class _PlantingScreenState extends State<PlantingScreen> {
-  int _selectedTab = 0; // 0: Farming, 1: Nursery
-  final Set<String> _favorites = {};
-
-  final List<
-    ({
-      String title,
-      String farmer,
-      String location,
-      String price,
-      double rating,
-      String photo,
-    })
-  >
-  _items = [
-    (
-      title: 'Spring Serenade Farming',
-      farmer: 'Robert Fox',
-      location: 'New York, USA',
-      price: '\$22.00-400.00',
-      rating: 4.8,
-      photo: 'farm',
-    ),
-    (
-      title: 'Urban Oasis Nursery',
-      farmer: 'Sarah Jenkins',
-      location: 'New York, USA',
-      price: '\$15.00-280.00',
-      rating: 4.9,
-      photo: 'market',
-    ),
-    (
-      title: 'Green Meadow Agronomics',
-      farmer: 'David Miller',
-      location: 'Ohio, USA',
-      price: '\$30.00-500.00',
-      rating: 4.7,
-      photo: 'strawberries',
-    ),
-  ];
-
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF7FAF8),
-    appBar: AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      centerTitle: true,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 14),
-        child: Center(
-          child: CircularNavButton(
-            icon: Icons.arrow_back,
-            onPressed: () => Navigator.pop(context),
-          ),
-        ),
-      ),
-      title: const Text(
-        'Planting',
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: Harvest.ink,
-        ),
-      ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 14),
-          child: CircularNavButton(
-            icon: Icons.notifications_none_outlined,
-            hasBadge: true,
-            onPressed: () =>
-                notice(context, 'Planting season: Perfect germination window!'),
-          ),
-        ),
-      ],
-    ),
-    body: ListView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
-      children: [
-        // 1. Segmented Toggle [Farming | Nursery] matching Reference 2 (Screen 5)
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: Harvest.border),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => setState(() => _selectedTab = 0),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _selectedTab == 0
-                          ? Harvest.forest
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      'Farming',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: _selectedTab == 0 ? Colors.white : Harvest.muted,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              Expanded(
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(20),
-                  onTap: () => setState(() => _selectedTab = 1),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    decoration: BoxDecoration(
-                      color: _selectedTab == 1
-                          ? Harvest.forest
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    alignment: Alignment.center,
-                    child: Text(
-                      'Nursery',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: _selectedTab == 1 ? Colors.white : Harvest.muted,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 18),
-
-        // 2. Search Box with Mic Icon
-        Container(
-          height: 48,
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Harvest.border),
-          ),
-          child: const Row(
-            children: [
-              Icon(Icons.search, color: Harvest.muted, size: 20),
-              SizedBox(width: 10),
-              Expanded(
-                child: Text(
-                  'Search here...',
-                  style: TextStyle(color: Harvest.muted, fontSize: 14),
-                ),
-              ),
-              Icon(Icons.mic_none_rounded, color: Harvest.muted, size: 20),
-            ],
-          ),
-        ),
-        const SizedBox(height: 22),
-
-        // 3. Farmer Story Cards
-        for (final item in _items)
-          Container(
-            margin: const EdgeInsets.only(bottom: 20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: Harvest.border),
-              boxShadow: const [
-                BoxShadow(
-                  color: Color(0x06000000),
-                  blurRadius: 14,
-                  offset: Offset(0, 4),
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Stack(
-                  children: [
-                    ClipRRect(
-                      borderRadius: const BorderRadius.only(
-                        topLeft: Radius.circular(24),
-                        topRight: Radius.circular(24),
-                      ),
-                      child: Photo(
-                        item.photo,
-                        height: 160,
-                        width: double.infinity,
-                        radius: 0,
-                      ),
-                    ),
-                    Positioned(
-                      top: 12,
-                      left: 12,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.5),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.star,
-                              color: Color(0xFFF59E0B),
-                              size: 14,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              '${item.rating}',
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      top: 12,
-                      right: 12,
-                      child: InkWell(
-                        onTap: () {
-                          setState(() {
-                            if (_favorites.contains(item.title)) {
-                              _favorites.remove(item.title);
-                            } else {
-                              _favorites.add(item.title);
-                            }
-                          });
-                          HapticFeedback.lightImpact();
-                        },
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.8),
-                            shape: BoxShape.circle,
-                          ),
-                          child: Icon(
-                            _favorites.contains(item.title)
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            color: Harvest.tomato,
-                            size: 18,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.title,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Harvest.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.person_outline,
-                            size: 14,
-                            color: Harvest.muted,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            item.farmer,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Harvest.muted,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 14,
-                            color: Harvest.muted,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            item.location,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Harvest.muted,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        item.price,
-                        style: const TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF10B981),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-      ],
-    ),
-  );
-}
-
-/// All Farm Directory Screen matching Reference Image 2 (Screen 6)
 class AllFarmsScreen extends StatefulWidget {
-  const AllFarmsScreen({super.key});
+  const AllFarmsScreen({super.key, this.followedOnly = false});
+  final bool followedOnly;
 
   @override
   State<AllFarmsScreen> createState() => _AllFarmsScreenState();
 }
 
 class _AllFarmsScreenState extends State<AllFarmsScreen> {
-  int _selectedFilter = 0; // 0: Regular, 1: Shariah
-
-  final List<
-    ({String name, String earnings, String price, String period, String photo})
-  >
-  _farms = [
-    (
-      name: 'Cucumber Farm 13',
-      earnings: '5.5%',
-      price: '10,000 BDT/share',
-      period: '4 Months',
-      photo: 'farm',
-    ),
-    (
-      name: 'Agriculture Farm 27',
-      earnings: '5.5%',
-      price: '10,000 BDT/share',
-      period: '4 Months',
-      photo: 'market',
-    ),
-    (
-      name: 'Korolla Farm 18',
-      earnings: '5.5%',
-      price: '10,000 BDT/share',
-      period: '4 Months',
-      photo: 'strawberries',
-    ),
-    (
-      name: 'Enrichment Farm 7',
-      earnings: '5.5%',
-      price: '10,000 BDT/share',
-      period: '4 Months',
-      photo: 'potatoes',
-    ),
-  ];
+  final _search = TextEditingController();
+  @override
+  void dispose() {
+    _search.dispose();
+    super.dispose();
+  }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: const Color(0xFFF7FAF8),
-    appBar: AppBar(
-      backgroundColor: Colors.transparent,
-      elevation: 0,
-      centerTitle: true,
-      leading: Padding(
-        padding: const EdgeInsets.only(left: 14),
-        child: Center(
-          child: CircularNavButton(
-            icon: Icons.arrow_back,
-            onPressed: () => Navigator.pop(context),
-          ),
+  Widget build(BuildContext context) {
+    final store = HarvestScope.of(context);
+    final palette = Harvest.colors(context);
+    final query = _search.text.trim().toLowerCase();
+    final farms =
+        store.farms.where((farm) {
+          if (!farm.active) return false;
+          if (widget.followedOnly && !store.followed.contains(farm.id)) {
+            return false;
+          }
+          if (query.isEmpty) return true;
+          return '${farm.name} ${farm.location} ${farm.market} ${farm.description}'
+              .toLowerCase()
+              .contains(query);
+        }).toList()..sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
+
+    return Scaffold(
+      backgroundColor: palette.canvas,
+      appBar: AppBar(
+        title: Text(
+          widget.followedOnly ? 'Followed farmers' : 'Farmers & farms',
         ),
       ),
-      title: const Text(
-        'All Farm',
-        style: TextStyle(
-          fontSize: 18,
-          fontWeight: FontWeight.w800,
-          color: Harvest.ink,
-        ),
-      ),
-      actions: [
-        Padding(
-          padding: const EdgeInsets.only(right: 14),
-          child: CircularNavButton(
-            icon: Icons.notifications_none_outlined,
-            hasBadge: true,
-            onPressed: () =>
-                notice(context, 'Farm alert: New harvest shares open!'),
+      body: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(18, 8, 18, 10),
+            child: SearchBox(
+              controller: _search,
+              hint: 'Search farmer, farm or market…',
+              onChanged: (_) => setState(() {}),
+            ),
           ),
-        ),
-      ],
-    ),
-    body: ListView(
-      padding: const EdgeInsets.fromLTRB(20, 10, 20, 40),
-      children: [
-        // 1. Segmented Toggle [Regular | Shariah] + filter icon
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Harvest.border),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: InkWell(
+          Expanded(
+            child: farms.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(28),
+                      child: InfoNote(
+                        widget.followedOnly
+                            ? 'You are not following any farmers yet.'
+                            : query.isEmpty
+                            ? 'No farms are available yet.'
+                            : 'No farms match that search.',
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(18, 4, 18, 28),
+                    itemCount: farms.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 10),
+                    itemBuilder: (context, i) {
+                      final farm = farms[i];
+                      final products = store.products
+                          .where((p) => p.farmId == farm.id && p.stock > 0)
+                          .length;
+                      final following = store.isFollowed(farm.id);
+                      return Material(
+                        color: palette.surface,
                         borderRadius: BorderRadius.circular(20),
-                        onTap: () => setState(() => _selectedFilter = 0),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: _selectedFilter == 0
-                                ? Harvest.forest
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            'Regular',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: _selectedFilter == 0
-                                  ? Colors.white
-                                  : Harvest.muted,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(20),
+                          onTap: () =>
+                              openPage(context, FarmScreen(farm: farm)),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 54,
+                                  height: 54,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(17),
+                                    gradient: const LinearGradient(
+                                      begin: Alignment.topLeft,
+                                      end: Alignment.bottomRight,
+                                      colors: [
+                                        Color(0xFFD8F1DE),
+                                        Color(0xFFB8DFC1),
+                                      ],
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.agriculture_rounded,
+                                    color: palette.forest,
+                                    size: 27,
+                                  ),
+                                ),
+                                const SizedBox(width: 13),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        farm.name,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: palette.ink,
+                                          fontWeight: FontWeight.w800,
+                                          fontSize: 15,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        [farm.location, farm.market]
+                                            .where((s) => s.trim().isNotEmpty)
+                                            .join(' · ')
+                                            .ifEmpty('Local farm'),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(
+                                          color: palette.muted,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 5),
+                                      Text(
+                                        '$products products available',
+                                        style: TextStyle(
+                                          color: palette.green,
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 11,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                IconButton(
+                                  tooltip: following
+                                      ? 'Unfollow farmer'
+                                      : 'Follow farmer',
+                                  onPressed: () => setState(
+                                    () => store.toggleFollowed(farm.id),
+                                  ),
+                                  icon: Icon(
+                                    following
+                                        ? Icons.favorite_rounded
+                                        : Icons.favorite_border_rounded,
+                                    color: following
+                                        ? const Color(0xFFE15D53)
+                                        : palette.muted,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                    Expanded(
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(20),
-                        onTap: () => setState(() => _selectedFilter = 1),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 200),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(
-                            color: _selectedFilter == 1
-                                ? Harvest.forest
-                                : Colors.transparent,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          alignment: Alignment.center,
-                          child: Text(
-                            'Shariah',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
-                              color: _selectedFilter == 1
-                                  ? Colors.white
-                                  : Harvest.muted,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Harvest.border),
-              ),
-              child: const Icon(Icons.tune, color: Harvest.forest, size: 20),
-            ),
-          ],
-        ),
-        const SizedBox(height: 24),
-
-        // 2. Active Farms Section
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            const Text(
-              'Active Farms',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-                color: Harvest.ink,
-              ),
-            ),
-            TextButton(
-              onPressed: () =>
-                  notice(context, 'Showing all verified agricultural listings'),
-              child: const Text(
-                'View all',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-
-        for (final f in _farms)
-          FarmDirectoryCard(
-            name: f.name,
-            earnings: f.earnings,
-            price: f.price,
-            period: f.period,
-            photo: f.photo,
-            onTap: () {
-              HapticFeedback.mediumImpact();
-              notice(context, 'Investment booking initiated for ${f.name}');
-            },
+                      );
+                    },
+                  ),
           ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
+}
+
+extension on String {
+  String ifEmpty(String fallback) => isEmpty ? fallback : this;
 }
