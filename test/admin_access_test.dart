@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:untitled/src/app.dart';
-import 'package:untitled/src/auth.dart';
-import 'package:untitled/src/components.dart';
-import 'package:untitled/src/models.dart';
-import 'package:untitled/src/operations.dart';
-import 'package:untitled/src/preview_store.dart';
+import 'package:untitled/src/features/authentication/authentication.dart';
+import 'package:untitled/src/features/common/shared/components.dart';
+import 'package:untitled/src/features/customer/customer.dart';
+import 'package:untitled/src/features/common/data/models.dart';
+import 'package:untitled/src/features/common/management/operations.dart';
+import 'package:untitled/src/features/common/profile/profile.dart';
+
+import 'fixtures/preview_store.dart';
 
 import 'test_support.dart';
 
@@ -24,6 +27,64 @@ class SessionFixture extends PreviewStore {
 
 void main() {
   setUpAll(loadHarvestFonts);
+  testWidgets(
+    'administrator profile logout clears session instead of only popping the page',
+    (tester) async {
+      final store = SessionFixture()
+        ..signedIn = true
+        ..role = UserRole.admin;
+      await tester.pumpWidget(HarvestHubApp(store: store, skipStartup: true));
+      await tester.pump(const Duration(seconds: 1));
+      final context = tester.element(find.byType(AppShell));
+      var backOnly = false;
+      openPage(
+        context,
+        ProfileScreen(
+          onExit: () {
+            backOnly = true;
+          },
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.scrollUntilVisible(
+        find.text('Logout'),
+        350,
+        scrollable: find.byType(Scrollable).last,
+      );
+      await tester.tap(find.text('Logout'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('Sign out').last);
+      await tester.pumpAndSettle();
+      expect(store.signedIn, isFalse);
+      expect(backOnly, isFalse);
+      expect(find.byType(AuthScreen), findsOneWidget);
+      expect(find.byType(ProfileScreen), findsNothing);
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(find.byType(AuthScreen), findsOneWidget);
+    },
+  );
+  testWidgets('live customer keeps the original interface and session store', (
+    tester,
+  ) async {
+    final store = SessionFixture()
+      ..signedIn = true
+      ..role = UserRole.customer;
+    await tester.pumpWidget(HarvestHubApp(store: store, skipStartup: true));
+    await tester.pump(const Duration(seconds: 1));
+    expect(find.byType(HomeScreen), findsOneWidget);
+    expect(
+      HarvestScope.of(tester.element(find.byType(HomeScreen))),
+      same(store),
+    );
+    await store.signOut();
+    await tester.pumpAndSettle();
+    expect(find.byType(AuthScreen), findsOneWidget);
+    expect(find.byType(HomeScreen), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('initialRole cannot bypass a live unauthenticated session', (
     tester,
   ) async {
@@ -70,10 +131,12 @@ void main() {
       ..signedIn = true
       ..role = UserRole.admin;
     await tester.pumpWidget(HarvestHubApp(store: store, skipStartup: true));
-    await tester.pumpAndSettle();
+    // Live metric placeholders animate continuously while this fixture loads.
+    await tester.pump(const Duration(seconds: 1));
     final context = tester.element(find.byType(AppShell));
     openPage(context, const CategoriesScreen());
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
     expect(find.text('Market Categories'), findsOneWidget);
     await store.signOut();
     await tester.pumpAndSettle();

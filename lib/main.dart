@@ -72,24 +72,26 @@ class _BootstrapState extends State<_Bootstrap> {
           !snapshot.hasError) {
         return HarvestHubApp(initialOnboardingSeen: onboardingSeen);
       }
-      return MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: snapshot.hasError
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text('Unable to initialize HarvestHub.'),
-                      TextButton(
-                        onPressed: () => setState(() => ready = initialize()),
-                        child: const Text('Retry'),
-                      ),
-                    ],
-                  )
-                : const CircularProgressIndicator(),
-          ),
-        ),
-      );
+
+      return Container();
+      // return MaterialApp(
+      //   home: Scaffold(
+      //     body: Center(
+      //       child: snapshot.hasError
+      //           ? Column(
+      //               mainAxisSize: MainAxisSize.min,
+      //               children: [
+      //                 const Text('Unable to initialize HarvestHub.'),
+      //                 TextButton(
+      //                   onPressed: () => setState(() => ready = initialize()),
+      //                   child: const Text('Retry'),
+      //                 ),
+      //               ],
+      //             )
+      //           : const CircularProgressIndicator(),
+      //     ),
+      //   ),
+      // );
     },
   );
 }

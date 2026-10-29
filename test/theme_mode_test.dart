@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:untitled/src/app.dart';
-import 'package:untitled/src/models.dart';
-import 'package:untitled/src/preview_store.dart';
+import 'package:untitled/src/features/common/data/models.dart';
+
+import 'fixtures/preview_store.dart';
 
 import 'test_support.dart';
 

@@ -1,8 +1,46 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:untitled/src/models.dart';
-import 'package:untitled/src/preview_store.dart';
+import 'package:untitled/src/features/common/data/models.dart';
+
+import 'fixtures/preview_store.dart';
 
 void main() async {
+  test(
+    'catalog groups farm offers but preserves units and seller inventory',
+    () {
+      final store = PreviewStore();
+      final original = store.product('tomato')!;
+      final second = Product(
+        id: 'tomato-other-farm',
+        name: '  ${original.name.toUpperCase()} ',
+        category: original.category,
+        farmId: 'sun',
+        price: original.price + 100,
+        stock: 8,
+        image: original.image,
+        unit: original.unit,
+      );
+      store.products.addAll([second, original]);
+      expect(
+        store
+            .catalogProducts(store.products)
+            .where((p) => store.catalogKey(p) == store.catalogKey(original)),
+        hasLength(1),
+      );
+      expect(store.offersFor(original), hasLength(2));
+      expect(store.catalogProducts([second, original]).single.id, original.id);
+      original.stock = 0;
+      expect(store.catalogProducts([original, second]).single.id, second.id);
+      second.unit = 'box';
+      expect(store.catalogProducts([original, second]), hasLength(2));
+      store.role = UserRole.farmer;
+      expect(
+        store.visibleProducts.where((p) => p.id == original.id),
+        hasLength(1),
+      );
+      expect(store.visibleProducts.any((p) => p.id == second.id), isFalse);
+      expect(store.canManage(second), isFalse);
+    },
+  );
   test('shared login detects each existing account role', () async {
     final store = PreviewStore();
     for (final role in UserRole.values) {

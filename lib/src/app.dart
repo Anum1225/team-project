@@ -1,21 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-import '../hashir_work/app.dart' as customer_app;
-import 'customer.dart';
-import 'operations.dart';
-import 'assistant.dart';
-import 'auth.dart';
-import 'components.dart';
-import 'models.dart';
-import 'onboarding.dart';
-import 'orders.dart';
-import 'store.dart';
-import 'firebase_store.dart';
-import 'profile.dart';
-import 'theme.dart';
-import 'theme_reveal.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import 'dart:async';
+import 'features/common/notifications/notifications.dart';
+import 'features/customer/customer.dart';
+import 'features/customer/widgets/customer_style.dart';
+import 'features/authentication/email_security.dart';
+import 'features/common/management/operations.dart';
+import 'features/customer/ai_assistant/assistant.dart';
+import 'features/authentication/authentication.dart';
+import 'features/common/shared/components.dart';
+import 'features/common/data/models.dart';
+import 'features/authentication/onboarding/onboarding.dart';
+import 'features/common/orders/orders.dart';
+import 'features/common/data/store.dart';
+import 'features/common/data/firebase_store.dart';
+import 'features/common/data/guest_store.dart';
+import 'features/common/profile/profile.dart';
+import 'features/common/shared/theme.dart';
+import 'features/common/shared/theme_reveal.dart';
+import 'features/common/shared/harvest_sprout.dart';
 
 class HarvestHubApp extends StatefulWidget {
   const HarvestHubApp({
@@ -24,12 +30,15 @@ class HarvestHubApp extends StatefulWidget {
     this.store,
     this.skipStartup = false,
     this.initialOnboardingSeen = false,
+    this.guestCatalogLoader,
   });
 
   final UserRole? initialRole;
   final HarvestStore? store;
   final bool skipStartup;
   final bool initialOnboardingSeen;
+  final Future<Map<String, dynamic>> Function(Map<String, dynamic>)?
+  guestCatalogLoader;
 
   @override
   State<HarvestHubApp> createState() => _HarvestHubAppState();
@@ -40,6 +49,29 @@ class _HarvestHubAppState extends State<HarvestHubApp> {
   late bool preview = widget.initialRole != null;
   late bool ready = widget.skipStartup;
   late bool seenOnboarding = widget.skipStartup || widget.initialOnboardingSeen;
+  GuestStore? guest;
+  bool demo = false;
+
+  void openDemo() {
+    if (guest == null) {
+      guest = widget.guestCatalogLoader == null
+          ? GuestStore(onSignIn: leaveDemo)
+          : GuestStore(
+              onSignIn: leaveDemo,
+              loadPage: widget.guestCatalogLoader!,
+            );
+      guest!.addListener(_onStore);
+    }
+    setState(() => demo = true);
+    unawaited(guest!.refresh());
+  }
+
+  void leaveDemo() {
+    setState(() {
+      demo = false;
+      seenOnboarding = true;
+    });
+  }
 
   void finishOnboarding() {
     setState(() => seenOnboarding = true);
@@ -64,34 +96,36 @@ class _HarvestHubAppState extends State<HarvestHubApp> {
   @override
   void dispose() {
     store.removeListener(_onStore);
+    guest?.removeListener(_onStore);
+    guest?.dispose();
     if (widget.store == null) store.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Signed-in customers use the customer app from lib/hashir_work; it shares
-    // the same Firebase login, and signing out there returns here.
-    if (store.live && store.authenticated && store.role == UserRole.customer) {
-      return const customer_app.HarvestHubApp(
-        key: ValueKey('customer-app'),
-        skipStartup: true,
-      );
-    }
-    return _adminApp(context);
+    return _roleApp(context);
   }
 
-  Widget _adminApp(BuildContext context) => HarvestScope(
-    store: store,
+  Widget _roleApp(BuildContext context) => HarvestScope(
+    store: demo ? guest! : store,
     child: ThemeReveal(
       builder: (mode, wrap) => MaterialApp(
         key: ValueKey(
-          store.live ? '${store.authenticated}:${store.role}' : 'preview',
+          demo
+              ? 'guest'
+              : store.live
+              ? '${store.authenticated}:${store.emailVerificationPending}:${store.role}'
+              : 'preview',
         ),
         title: 'HarvestHub',
         debugShowCheckedModeBanner: false,
-        theme: Harvest.theme,
-        darkTheme: Harvest.darkTheme,
+        theme: demo || store.role == UserRole.customer
+            ? customerTheme(Harvest.theme)
+            : Harvest.theme,
+        darkTheme: demo || store.role == UserRole.customer
+            ? customerTheme(Harvest.darkTheme)
+            : Harvest.darkTheme,
         themeMode: mode,
         themeAnimationDuration: Duration.zero,
         builder: (context, child) => wrap(
@@ -105,8 +139,12 @@ class _HarvestHubAppState extends State<HarvestHubApp> {
             ),
           ),
         ),
-        home: !ready
+        home: demo
+            ? AppShell(key: const ValueKey('guest'), onExit: leaveDemo)
+            : !ready
             ? StartupScreen(onReady: () => setState(() => ready = true))
+            : store.live && store.emailVerificationPending
+            ? EmailCodeScreen(onCancel: store.signOut)
             : (!seenOnboarding && !(store.live ? store.authenticated : preview))
             ? OnboardingScreen(onFinish: finishOnboarding)
             : (store.live ? store.authenticated : preview)
@@ -122,7 +160,7 @@ class _HarvestHubAppState extends State<HarvestHubApp> {
               )
             : store.live && store.loading
             ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-            : const AuthScreen(role: UserRole.customer),
+            : AuthScreen(role: UserRole.customer, onDemo: openDemo),
       ),
     ),
   );
@@ -155,7 +193,7 @@ class _StartupScreenState extends State<StartupScreen>
     // 2.6-second cinematic progression giving users ample time to enjoy the blooming sequence
     _controller = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 2600),
+      duration: const Duration(milliseconds: 5000),
     );
 
     // 0ms - 500ms: Golden seed emerges and settles in soil
@@ -304,38 +342,38 @@ class _StartupScreenState extends State<StartupScreen>
             child: Stack(
               children: [
                 // Top-right quick skip button
-                Positioned(
-                  top: 16,
-                  right: 20,
-                  child: TextButton.icon(
-                    onPressed: _finishNow,
-                    style: TextButton.styleFrom(
-                      foregroundColor: const Color(0xFFF2EFE9)
-                          .withValues(alpha: 0.90),
-                      backgroundColor: Colors.black.withValues(alpha: 0.35),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 14,
-                        vertical: 8,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        side: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.2),
-                        ),
-                      ),
-                    ),
-                    icon: const Icon(Icons.arrow_forward_rounded, size: 14),
-                    label: const Text(
-                      'Skip',
-                      style: TextStyle(
-                        fontFamily: 'Manrope',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        letterSpacing: 0.4,
-                      ),
-                    ),
-                  ),
-                ),
+                // Positioned(
+                //   top: 16,
+                //   right: 20,
+                //   child: TextButton.icon(
+                //     onPressed: _finishNow,
+                //     style: TextButton.styleFrom(
+                //       foregroundColor: const Color(0xFFF2EFE9)
+                //           .withValues(alpha: 0.90),
+                //       backgroundColor: Colors.black.withValues(alpha: 0.35),
+                //       padding: const EdgeInsets.symmetric(
+                //         horizontal: 14,
+                //         vertical: 8,
+                //       ),
+                //       shape: RoundedRectangleBorder(
+                //         borderRadius: BorderRadius.circular(20),
+                //         side: BorderSide(
+                //           color: Colors.white.withValues(alpha: 0.2),
+                //         ),
+                //       ),
+                //     ),
+                //     icon: const Icon(Icons.arrow_forward_rounded, size: 14),
+                //     label: const Text(
+                //       'Skip',
+                //       style: TextStyle(
+                //         fontFamily: 'Manrope',
+                //         fontSize: 12,
+                //         fontWeight: FontWeight.w700,
+                //         letterSpacing: 0.4,
+                //       ),
+                //     ),
+                //   ),
+                // ),
 
                 // Animated central stage
                 Center(
@@ -437,7 +475,7 @@ class _StartupScreenState extends State<StartupScreen>
                                     child: Center(
                                       child: CustomPaint(
                                         size: const Size(92, 92),
-                                        painter: _SproutPainter(
+                                        painter: HarvestSproutPainter(
                                           progress: _leafGrowth.value,
                                           color: const Color(0xFFBDEBC0),
                                           accentColor: const Color(0xFFFFCA65),
@@ -613,220 +651,6 @@ class _StartupScreenState extends State<StartupScreen>
 }
 
 /// Pure Vector Botanical Seed-to-Sprout Growth Painter (No raster image)
-class _SproutPainter extends CustomPainter {
-  _SproutPainter({
-    required this.progress,
-    required this.color,
-    required this.accentColor,
-  });
-
-  final double progress;
-  final Color color;
-  final Color accentColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.scale(size.width / 48, size.height / 48);
-
-    final plantPaint = Paint()
-      ..color = color
-      ..style = PaintingStyle.fill;
-    final goldPaint = Paint()
-      ..color = accentColor
-      ..style = PaintingStyle.fill;
-    final strokeGold = Paint()
-      ..color = accentColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round;
-
-    // 1. Soil mound & seed at base (0.0 to 0.22)
-    final seedY = 28.0 + (10.0 * progress.clamp(0.0, 0.2) / 0.2);
-    final seedPath = Path()
-      ..moveTo(24, seedY)
-      ..cubicTo(20, seedY, 19, seedY - 6, 24, seedY - 11)
-      ..cubicTo(29, seedY - 6, 28, seedY, 24, seedY);
-
-    if (progress <= 0.16) {
-      canvas.drawPath(seedPath, goldPaint);
-      return;
-    }
-
-    // 2. Rising central stem with natural organic flex (0.16 to 0.65)
-    final stemP = ((progress - 0.16) / 0.50).clamp(0.0, 1.0);
-    final stem = Path()
-      ..moveTo(24, 42)
-      ..quadraticBezierTo(
-        24 - (2 * (1.0 - stemP)),
-        32,
-        24 + (3 * stemP),
-        42 - (26 * stemP),
-      );
-    canvas.drawPath(
-      stem,
-      Paint()
-        ..color = color
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 3.0
-        ..strokeCap = StrokeCap.round,
-    );
-
-    // 3. Left botanical leaf unfurls (0.26 to 0.75)
-    if (progress > 0.26) {
-      final lp = ((progress - 0.26) / 0.46).clamp(0.0, 1.0);
-      final leftLeaf = Path()
-        ..moveTo(24, 36)
-        ..cubicTo(
-          24 - (19 * lp),
-          36 - (2 * lp),
-          24 - (24 * lp),
-          36 - (18 * lp),
-          24 - (18 * lp),
-          36 - (28 * lp),
-        )
-        ..cubicTo(
-          24 - (3 * lp),
-          36 - (28 * lp),
-          24 + (2 * lp),
-          36 - (16 * lp),
-          24,
-          36,
-        );
-      canvas.drawPath(leftLeaf, plantPaint);
-
-      // Delicate leaf center vein
-      final leftVein = Path()
-        ..moveTo(24, 36)
-        ..quadraticBezierTo(
-          24 - (10 * lp),
-          36 - (14 * lp),
-          24 - (18 * lp),
-          36 - (28 * lp),
-        );
-      canvas.drawPath(
-        leftVein,
-        Paint()
-          ..color = Colors.white.withValues(alpha: 0.35)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0,
-      );
-
-      // Morning dewdrop glint
-      if (lp > 0.6) {
-        canvas.drawCircle(
-          Offset(24 - (18 * lp), 36 - (28 * lp)),
-          1.8,
-          goldPaint,
-        );
-      }
-    }
-
-    // 4. Right symmetrical organic leaf (0.34 to 0.82)
-    if (progress > 0.34) {
-      final rp = ((progress - 0.34) / 0.46).clamp(0.0, 1.0);
-      final rightLeaf = Path()
-        ..moveTo(24, 34)
-        ..cubicTo(
-          24 + (19 * rp),
-          34 - (2 * rp),
-          24 + (24 * rp),
-          34 - (18 * rp),
-          24 + (18 * rp),
-          34 - (28 * rp),
-        )
-        ..cubicTo(
-          24 + (3 * rp),
-          34 - (28 * rp),
-          24 - (2 * rp),
-          34 - (16 * rp),
-          24,
-          34,
-        );
-      canvas.drawPath(rightLeaf, plantPaint);
-
-      // Right leaf center vein
-      final rightVein = Path()
-        ..moveTo(24, 34)
-        ..quadraticBezierTo(
-          24 + (10 * rp),
-          34 - (14 * rp),
-          24 + (18 * rp),
-          34 - (28 * rp),
-        );
-      canvas.drawPath(
-        rightVein,
-        Paint()
-          ..color = Colors.white.withValues(alpha: 0.35)
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.0,
-      );
-    }
-
-    // 5. Crown harvest ear & golden grains at apex (0.48 to 1.0)
-    if (progress > 0.48) {
-      final wp = ((progress - 0.48) / 0.48).clamp(0.0, 1.0);
-      // Wheat apex stem
-      final wheatStem = Path()
-        ..moveTo(24, 26)
-        ..quadraticBezierTo(25, 18, 24 + (4 * wp), 8 * wp + (1.0 - wp) * 26);
-      canvas.drawPath(
-        wheatStem,
-        Paint()
-          ..color = accentColor
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 2.2
-          ..strokeCap = StrokeCap.round,
-      );
-
-      // 6 Golden grain husks fanning upwards
-      for (var i = 0; i < 5; i++) {
-        if (wp > 0.15 + (i * 0.16)) {
-          final grainP = ((wp - (0.15 + (i * 0.16))) / 0.20).clamp(0.0, 1.0);
-          final gy = 22.0 - (i * 3.8);
-          final gx = 24.5 + (i * 0.8);
-
-          // Left grain husk
-          canvas.drawOval(
-            Rect.fromCenter(
-              center: Offset(gx - (4.0 * grainP), gy),
-              width: 5.5 * grainP,
-              height: 3.2 * grainP,
-            ),
-            goldPaint,
-          );
-          // Right grain husk
-          canvas.drawOval(
-            Rect.fromCenter(
-              center: Offset(gx + (4.0 * grainP), gy - 1.2),
-              width: 5.5 * grainP,
-              height: 3.2 * grainP,
-            ),
-            goldPaint,
-          );
-        }
-      }
-    }
-
-    // 6. Base fertile earth cradle (0.62 to 1.0)
-    if (progress > 0.62) {
-      final bp = ((progress - 0.62) / 0.38).clamp(0.0, 1.0);
-      final earthArc = Path()
-        ..moveTo(12, 40)
-        ..quadraticBezierTo(24, 46, 36, 40);
-      canvas.drawPath(earthArc, strokeGold..strokeWidth = 2.0 * bp);
-      if (bp > 0.4) {
-        canvas.drawCircle(const Offset(24, 42.5), 1.5 * bp, goldPaint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(_SproutPainter oldDelegate) =>
-      oldDelegate.progress != progress ||
-      oldDelegate.color != color ||
-      oldDelegate.accentColor != accentColor;
-}
-
 class AppShell extends StatefulWidget {
   const AppShell({super.key, required this.onExit});
   final VoidCallback onExit;
@@ -838,6 +662,55 @@ class AppShell extends StatefulWidget {
 class _AppShellState extends State<AppShell> {
   int index = 0;
   final Map<int, Widget> pages = {};
+  StreamSubscription<RemoteMessage>? _foregroundMessages, _openedMessages;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || !HarvestScope.of(context).live || Firebase.apps.isEmpty) {
+        return;
+      }
+      _foregroundMessages = FirebaseMessaging.onMessage.listen((message) async {
+        final prefs = await SharedPreferences.getInstance();
+        if (!mounted ||
+            prefs.getBool(
+                  'harvesthub_push_enabled_${HarvestScope.of(context).account.id}',
+                ) !=
+                true) {
+          return;
+        }
+        final notification = message.notification;
+        if (notification != null) {
+          notice(
+            context,
+            [
+              notification.title,
+              notification.body,
+            ].whereType<String>().join(' · '),
+          );
+        }
+      });
+      _openedMessages = FirebaseMessaging.onMessageOpenedApp.listen((_) {
+        if (mounted) openPage(context, const NotificationsScreen());
+      });
+      try {
+        final initial = await FirebaseMessaging.instance.getInitialMessage();
+        if (mounted && initial != null) {
+          openPage(context, const NotificationsScreen());
+        }
+      } on FirebaseException {
+        // Opening the app remains available if messaging is temporarily down.
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _foregroundMessages?.cancel();
+    _openedMessages?.cancel();
+    super.dispose();
+  }
 
   void select(int value) {
     HapticFeedback.selectionClick();
@@ -934,7 +807,31 @@ class _AppShellState extends State<AppShell> {
         bottom: false,
         child: Column(
           children: [
-            if (store.live &&
+            if (store.isDemo)
+              Material(
+                color: Harvest.colors(context).paleLeaf,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    children: [
+                      const Expanded(
+                        child: Text(
+                          'Demo · Browse the live catalog',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                      TextButton(
+                        onPressed: store.requestSignIn,
+                        child: const Text('Sign in'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            if ((store.live || store.isDemo) &&
                 (store.loading || store.error != null || store.hasMore))
               const DataStatusBar(),
             Expanded(
@@ -1062,7 +959,7 @@ class _AppShellState extends State<AppShell> {
                                       const SizedBox(height: 3),
                                       Padding(
                                         padding: const EdgeInsets.symmetric(
-                                          horizontal: 2,
+                                          horizontal: 11,
                                         ),
                                         child: FittedBox(
                                           fit: BoxFit.scaleDown,
@@ -1076,7 +973,7 @@ class _AppShellState extends State<AppShell> {
                                               fontFamily: 'Manrope',
                                               fontSize: 10,
                                               height: 1.1,
-                                              letterSpacing: 0.05,
+                                              letterSpacing: 0,
                                               fontWeight: selected
                                                   ? FontWeight.w800
                                                   : FontWeight.w600,

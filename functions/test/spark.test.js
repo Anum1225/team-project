@@ -1,11 +1,12 @@
 const {test,before,after}=require('node:test');
 const assert=require('node:assert/strict');
 const fs=require('node:fs');
+const path=require('node:path');
 const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,updateDoc,writeBatch,serverTimestamp,runTransaction}=require('firebase/firestore');
+const {doc,setDoc,getDoc,updateDoc,writeBatch,serverTimestamp,runTransaction,arrayUnion,arrayRemove}=require('firebase/firestore');
 let env; const now=()=>serverTimestamp();
 before(async()=>{
- env=await initializeTestEnvironment({projectId:'demo-harvesthub',firestore:{rules:fs.readFileSync('../firestore.rules','utf8')}});
+ env=await initializeTestEnvironment({projectId:'demo-harvesthub',firestore:{rules:fs.readFileSync(path.join(__dirname,'../../config/firebase/firestore.rules'),'utf8')}});
  await env.clearFirestore();
  await env.withSecurityRulesDisabled(async c=>{
  const db=c.firestore();
@@ -15,8 +16,53 @@ before(async()=>{
  });
 });
 after(async()=>env?.cleanup());
-const db=role=>env.authenticatedContext(role,{email:`${role}@test.local`}).firestore();
+const proof=email=>({firebase:{sign_in_provider:'custom'},hh_email_2fa:true,hh_security_version:0,hh_verified_email:email});
+const db=role=>env.authenticatedContext(role,{email:`${role}@test.local`,...proof(`${role}@test.local`)}).firestore();
 const product=()=>({name:'Carrot',farmId:'farmer',farmName:'Farm',category:'Vegetables',categoryId:'VmVn',price:250,stock:10,image:'',unit:'kg',description:'Fresh',archived:false,createdAt:now(),updatedAt:now()});
+
+test('farm-banner ownership and image size are enforced', async () => {
+ await env.withSecurityRulesDisabled(async c => {
+  await setDoc(doc(c.firestore(),'users/otherfarmer'),{name:'Other',role:'farmer',active:true});
+ });
+ const image='data:image/jpeg;base64,'+'A'.repeat(130000);
+ await assertSucceeds(updateDoc(doc(db('farmer'),'farms/farmer'),{image,updatedAt:now()}));
+ assert.equal((await getDoc(doc(db('customer'),'farms/farmer'))).data().image,image);
+ await assertFails(updateDoc(doc(db('customer'),'farms/farmer'),{image:'forged',updatedAt:now()}));
+ await assertFails(updateDoc(doc(db('otherfarmer'),'farms/farmer'),{image:'forged',updatedAt:now()}));
+ await assertFails(updateDoc(doc(db('farmer'),'farms/farmer'),{image:'A'.repeat(140001),updatedAt:now()}));
+ await assertFails(updateDoc(doc(db('farmer'),'farms/farmer'),{owner:'otherfarmer',image:'changed',updatedAt:now()}));
+});
+
+test('all roles honor server 2FA setting and cannot edit it directly', async () => {
+ for (const role of ['admin','customer','farmer']) {
+  for (const flag of [undefined,false,true]) {
+   const uid=`mandatory-${role}-${String(flag)}`, email=`${uid}@test.local`;
+   await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),`users/${uid}`),{name:role,email,role,active:true,...(flag===undefined?{}:{email2faEnabled:flag})}));
+   const password=env.authenticatedContext(uid,{email,firebase:{sign_in_provider:'password'},email_verified:true}).firestore();
+   await assertSucceeds(getDoc(doc(password,`users/${uid}`)));
+   await (flag === false ? assertSucceeds : assertFails)(getDoc(doc(password,'categories/VmVn')));
+   await assertFails(updateDoc(doc(password,`users/${uid}`),{email2faEnabled:flag === false,updatedAt:now()}));
+   const verified=env.authenticatedContext(uid,{email,...proof(email)}).firestore();
+   await assertSucceeds(getDoc(doc(verified,'categories/VmVn')));
+   await assertFails(updateDoc(doc(verified,`users/${uid}`),{email2faEnabled:flag === false,updatedAt:now()}));
+   const wrong=env.authenticatedContext(uid,{email,...proof('wrong@test.local')}).firestore();
+   await (flag === false ? assertSucceeds : assertFails)(getDoc(doc(wrong,'categories/VmVn')));
+  }
+ }
+});
+
+test('password sessions can register a customer or farmer but must verify before browsing', async () => {
+ for(const role of ['customer','farmer']) {
+  const uid=`register-${role}`, email=`${uid}@test.local`;
+  const d=env.authenticatedContext(uid,{email,firebase:{sign_in_provider:'password'}}).firestore();
+  const b=writeBatch(d);
+  b.set(doc(d,`users/${uid}`),{name:'New account',email,role,phone:'',address:'',active:true,createdAt:now()});
+  if(role==='farmer') b.set(doc(d,`farms/${uid}`),{name:'New account',owner:uid,location:'',market:'',description:'',image:'',active:true,createdAt:now()});
+  await assertSucceeds(b.commit());
+  await assertSucceeds(getDoc(doc(d,`users/${uid}`)));
+  await assertFails(getDoc(doc(d,'categories/VmVn')));
+ }
+});
 test('free-plan registration and roles',async()=>{
  const d=db('new');const p={name:'New',email:'new@test.local',role:'customer',phone:'',address:'',active:true,createdAt:now()};
  await assertFails(setDoc(doc(d,'users/new'),{...p,role:'admin'}));
@@ -42,16 +88,25 @@ test('admin contact edits and suspension; farmer own catalog transaction',async(
  await assertFails(updateDoc(doc(f,'products/carrot'),{price:-1,updatedAt:now()}));
  await assertFails(updateDoc(doc(f,'categories/VmVn'),{productCount:99,lastProductId:'carrot'}));
 });
-async function purchase(id,{price=250,qty=2,stock=8}={}){
+async function purchase(id,{price=250,qty=2,stock=8,contact={}}={}){
  const d=db('customer'), b=writeBatch(d);
- b.set(doc(d,`orders/${id}`),{customerId:'customer',customerName:'Customer',farmId:'farmer',farmerId:'farmer',farmName:'Farm',market:'Market',items:[{productId:'carrot',name:'Carrot',image:'',unit:'kg',price,quantity:qty}],total:price*qty,address:'Test address',status:'pending',createdAt:now()});
+ b.set(doc(d,`orders/${id}`),{customerId:'customer',customerName:'Customer',farmId:'farmer',farmerId:'farmer',farmName:'Farm',market:'Market',items:[{productId:'carrot',name:'Carrot',image:'',unit:'kg',price,quantity:qty}],total:price*qty,address:'Test address',status:'pending',createdAt:now(),...contact});
  b.update(doc(d,'products/carrot'),{stock,lastOrderId:id,updatedAt:now()});
  return b.commit();
 }
 test('checkout validates snapshots and commits stock with order atomically',async()=>{
  await assertFails(purchase('tampered',{price:1}));
  await assertFails(purchase('wrong-stock',{stock:9}));
- await assertSucceeds(purchase('valid'));
+ await assertFails(purchase('bad-name',{contact:{recipientName:''}}));
+ await assertFails(purchase('long-note',{contact:{note:'x'.repeat(1001)}}));
+ await assertFails(purchase('long-phone',{contact:{phone:'1'.repeat(41)}}));
+ await assertFails(purchase('forged-account',{contact:{customerName:'Another customer'}}));
+ await assertFails(purchase('unsupported-payment',{contact:{paymentMethod:'paid'}}));
+ const contact={recipientName:'Pickup recipient',phone:'+923001234567',note:'Please pack separately',paymentMethod:'cashOnDelivery'};
+ await assertSucceeds(purchase('valid',{contact}));
+ const saved=(await getDoc(doc(db('customer'),'orders/valid'))).data();
+ for(const [key,value] of Object.entries(contact)) assert.equal(saved[key],value);
+ await assertFails(updateDoc(doc(db('customer'),'orders/valid'),{phone:'+923009999999'}));
  await assertSucceeds(setDoc(doc(db('customer'),'users/customer/pickups/valid'),{slot:'11 AM - 1 PM',updatedAt:now()}));
  await assertFails(setDoc(doc(db('customer'),'users/customer/pickups/valid'),{slot:'Not published',updatedAt:now()}));
  await assertSucceeds(getDoc(doc(db('farmer'),'users/customer/pickups/valid')));
@@ -107,4 +162,66 @@ test('farm availability and markets are role protected; notifications cannot be 
  await assertFails(setDoc(doc(f,'farmersMarkets/test'),market));
  await assertSucceeds(setDoc(doc(a,'farmersMarkets/test'),market));
  await assertSucceeds(getDoc(doc(c,'farmersMarkets/test')));
+});
+
+ test('email two-step blocks password sessions and stale proofs',async()=>{
+  await env.withSecurityRulesDisabled(async c=>{
+    await setDoc(doc(c.firestore(),'users/secured'),{name:'Secured',email:'secured@test.local',role:'customer',active:true,email2faEnabled:true,securityVersion:2});
+  });
+  const plain=env.authenticatedContext('secured',{email:'secured@test.local',firebase:{sign_in_provider:'password'}}).firestore();
+  await assertSucceeds(getDoc(doc(plain,'users/secured')));
+  await assertFails(getDoc(doc(plain,'categories/VmVn')));
+  await assertFails(updateDoc(doc(plain,'users/secured'),{email2faEnabled:false}));
+  const stale=env.authenticatedContext('secured',{firebase:{sign_in_provider:'custom'},hh_email_2fa:true,hh_security_version:1}).firestore();
+  await assertFails(getDoc(doc(stale,'categories/VmVn')));
+  const verified=env.authenticatedContext('secured',{firebase:{sign_in_provider:'custom'},hh_email_2fa:true,hh_security_version:2,hh_verified_email:'secured@test.local'}).firestore();
+  await assertSucceeds(getDoc(doc(verified,'categories/VmVn')));
+  await assertFails(getDoc(doc(verified,'emailSecurityChallenges/secured')));
+  await assertFails(updateDoc(doc(verified,'users/secured'),{email2faEnabled:false,updatedAt:now()}));
+ });
+
+test('farmer follows persist independently of saved products and stay private', async () => {
+ const f = db('farmer'), preferences = doc(f, 'users/farmer/private/preferences');
+ await assertSucceeds(setDoc(preferences, { saved: ['carrot'], followed: [] }));
+ await assertSucceeds(updateDoc(preferences, { followed: arrayUnion('f1') }));
+ assert.deepEqual((await getDoc(preferences)).data(), { saved: ['carrot'], followed: ['f1'] });
+ await assertFails(getDoc(doc(db('customer'), 'users/farmer/private/preferences')));
+ await assertFails(updateDoc(doc(db('customer'), 'users/farmer/private/preferences'), { followed: [] }));
+ await assertSucceeds(updateDoc(preferences, { followed: arrayRemove('f1') }));
+ assert.deepEqual((await getDoc(preferences)).data().followed, []);
+});
+
+test('only administrators can publish the public About page; merging preserves other settings',async()=>{
+ const path='appConfig/public';
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),path),{contactEmail:'support@test.local',retainedSetting:true}));
+ const content={aboutVersion:1,aboutHeadline:'Our updated story',about:'Published by the administrator',aboutCommunityBody:'',updatedAt:now()};
+ await assertFails(setDoc(doc(db('customer'),path),content,{merge:true}));
+ await assertFails(setDoc(doc(db('farmer'),path),content,{merge:true}));
+ await assertSucceeds(setDoc(doc(db('admin'),path),content,{merge:true}));
+ const data=(await assertSucceeds(getDoc(doc(env.unauthenticatedContext().firestore(),path)))).data();
+ assert.equal(data.aboutHeadline,'Our updated story');
+ assert.equal(data.aboutCommunityBody,'');
+ assert.equal(data.contactEmail,'support@test.local');
+ assert.equal(data.retainedSetting,true);
+});
+
+test('notification recipients can mark read but cannot forge, edit or read others notices', async () => {
+ await env.withSecurityRulesDisabled(async c => {
+  await setDoc(doc(c.firestore(), 'users/customer/notifications/server-created'), { title: 'Order update', body: 'Ready', target: 'order:valid', createdAt: now() });
+ });
+ const ref = doc(db('customer'), 'users/customer/notifications/server-created');
+ await assertSucceeds(updateDoc(ref, { readAt: now() }));
+ await assertFails(updateDoc(ref, { title: 'Forged', readAt: now() }));
+ await assertFails(getDoc(doc(db('farmer'), 'users/customer/notifications/server-created')));
+});
+
+test('email synchronization requires verified ownership and preserves security fields', async () => {
+ const verified = env.authenticatedContext('customer', { email: 'new@test.local', email_verified: true, ...proof('customer@test.local') }).firestore();
+ const unverified = env.authenticatedContext('customer', { email: 'new@test.local', email_verified: false }).firestore();
+ await assertFails(updateDoc(doc(unverified, 'users/customer'), { email: 'new@test.local', updatedAt: now() }));
+ await assertFails(updateDoc(doc(verified, 'users/customer'), { email: 'other@test.local', updatedAt: now() }));
+ await assertFails(updateDoc(doc(verified, 'users/customer'), { email: 'new@test.local', email2faEnabled: false, updatedAt: now() }));
+ await assertSucceeds(updateDoc(doc(verified, 'users/customer'), { email: 'new@test.local', updatedAt: now() }));
+ const passwordOnly = env.authenticatedContext('secured', { email: 'attacker@test.local', email_verified: true, firebase: { sign_in_provider: 'password' } }).firestore();
+ await assertFails(updateDoc(doc(passwordOnly, 'users/secured'), { email: 'attacker@test.local', updatedAt: now() }));
 });

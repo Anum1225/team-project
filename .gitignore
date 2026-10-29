@@ -54,6 +54,10 @@ app.*.map.json
 
 
 # Local secrets
+.local-backups/
+# Local project review documents contain owner-supplied login details.
+/docs/README.doc
+/docs/README.docx
 .env
 .env.*
 !.env.example

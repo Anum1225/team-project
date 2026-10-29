@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" fill="none">
+  <defs>
+    <linearGradient id="leaf" x1="82" y1="26" x2="48" y2="68" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#CAF0CD"/><stop offset="1" stop-color="#A5DCAD"/>
+    </linearGradient>
+    <g id="branch">
+      <path d="M48 68C68 67 83 53 82 26C59 27 47 43 48 68Z" fill="url(#leaf)"/>
+      <path d="M49 65Q65 48 78 31" stroke="#fff" stroke-opacity=".4" stroke-width="1.15" stroke-linecap="round"/>
+      <path d="M59 53Q66 52 73 47M68 42Q69 35 70 32" stroke="#fff" stroke-opacity=".4" stroke-width=".7" stroke-linecap="round"/>
+    </g>
+    <path id="grain" d="M1 2C2-3 7-6 11-5C11 0 6 4 1 2Z" fill="#FFCA65"/>
+  </defs>
+  <path d="M27 81Q48 90 69 81" stroke="#FFCA65" stroke-width="2.6" stroke-linecap="round"/>
+  <path d="M48 82V35" stroke="#BDEBC0" stroke-width="3.8" stroke-linecap="round"/>
+  <use href="#branch"/><use href="#branch" transform="translate(96 0) scale(-1 1)"/>
+  <path d="M48 54V15" stroke="#FFCA65" stroke-width="1.7" stroke-linecap="round"/>
+  <g transform="translate(48 22)"><use href="#grain"/><use href="#grain" transform="scale(-1 1)"/></g>
+  <g transform="translate(48 29)"><use href="#grain"/><use href="#grain" transform="scale(-1 1)"/></g>
+  <g transform="translate(48 36)"><use href="#grain"/><use href="#grain" transform="scale(-1 1)"/></g>
+  <g transform="translate(48 43)"><use href="#grain"/><use href="#grain" transform="scale(-1 1)"/></g>
+  <path d="M48 19C43 16 45 12 48 10C51 12 53 16 48 19Z" fill="#FFCA65"/>
+</svg>
