@@ -3,6 +3,7 @@ import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -15,6 +16,7 @@ export 'src/app.dart' show HarvestHubApp;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
   runApp(const _Bootstrap());
 }
 
@@ -80,7 +82,7 @@ class _BootstrapState extends State<_Bootstrap> {
       //       child: snapshot.hasError
       //           ? Column(
       //               mainAxisSize: MainAxisSize.min,
-      //               children: [
+      //               children: [\
       //                 const Text('Unable to initialize HarvestHub.'),
       //                 TextButton(
       //                   onPressed: () => setState(() => ready = initialize()),

@@ -13,6 +13,9 @@ class ConfirmationScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final palette = Harvest.colors(context);
     final total = orders.fold<int>(0, (sum, order) => sum + order.total);
+    final awaitingApproval = orders.any(
+      (order) => order.approvalStatus == 'pending',
+    );
     return Scaffold(
       backgroundColor: palette.canvas,
       body: SafeArea(
@@ -39,13 +42,15 @@ class ConfirmationScreen extends StatelessWidget {
             ),
             const SizedBox(height: 22),
             Text(
-              'Order confirmed',
+              awaitingApproval ? 'Order submitted' : 'Order confirmed',
               textAlign: TextAlign.center,
               style: Harvest.editorial(32),
             ),
             const SizedBox(height: 10),
             Text(
-              'Thank you for supporting local growers. Follow your order status for confirmation and pickup updates.',
+              awaitingApproval
+                  ? 'Your order is awaiting administrator approval. You can follow its status from My Orders.'
+                  : 'Thank you for supporting local growers. Follow your order status for confirmation and pickup updates.',
               textAlign: TextAlign.center,
               style: TextStyle(color: palette.muted, height: 1.5),
             ),

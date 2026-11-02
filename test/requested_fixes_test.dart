@@ -90,24 +90,44 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-  test(
-    'markets include real farm profiles and respect unpublished markets',
-    () {
-      final farms = PreviewStore().farms;
-      final listings = marketListings([], farms);
-      expect(listings.any((m) => m['name'] == farms.first.market), true);
-      expect(listings.where((m) => m['name'] == farms.first.market).length, 1);
-      final hidden = marketListings([
-        {'name': farms.first.market, 'active': false},
-      ], farms);
-      expect(hidden.any((m) => m['name'] == farms.first.market), false);
-      final published = marketListings([
-        {'name': farms.first.market, 'active': true, 'hours': 'Sunday'},
-      ], farms);
-      expect(
-        published.firstWhere((m) => m['name'] == farms.first.market)['hours'],
-        'Sunday',
-      );
-    },
-  );
+  test('markets require publication and include matching farm profiles', () {
+    final farms = PreviewStore().farms;
+    final listings = marketListings([], farms);
+    expect(listings, isEmpty);
+    final hidden = marketListings([
+      {'name': farms.first.market, 'active': false},
+    ], farms);
+    expect(hidden.any((m) => m['name'] == farms.first.market), false);
+    final pending = marketListings([
+      {
+        'name': 'New Market',
+        'active': false,
+        'owner': farms.first.owner,
+        'approvalStatus': 'pending',
+      },
+    ], farms);
+    expect(pending, isEmpty);
+    expect(
+      marketListings(
+        [
+          {
+            'name': 'New Market',
+            'active': false,
+            'owner': farms.first.owner,
+            'approvalStatus': 'pending',
+          },
+        ],
+        farms,
+        ownerId: farms.first.owner,
+      ),
+      hasLength(1),
+    );
+    final published = marketListings([
+      {'name': farms.first.market, 'active': true, 'hours': 'Sunday'},
+    ], farms);
+    expect(
+      published.firstWhere((m) => m['name'] == farms.first.market)['hours'],
+      'Sunday',
+    );
+  });
 }

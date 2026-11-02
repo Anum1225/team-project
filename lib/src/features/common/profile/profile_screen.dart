@@ -289,6 +289,12 @@ class ProfileScreen extends StatelessWidget {
             if (admin) ...[
               const SectionHeader('Admin Operations'),
               MenuRow(
+                title: 'Pending approvals',
+                subtitle: 'Review accounts, products and orders',
+                icon: Icons.fact_check_outlined,
+                onTap: () => openPage(context, const AdminApprovalsScreen()),
+              ),
+              MenuRow(
                 title: 'Analytics & Sales',
                 subtitle: 'Revenue charts and performance metrics',
                 icon: Icons.analytics_outlined,
@@ -305,6 +311,12 @@ class ProfileScreen extends StatelessWidget {
                 subtitle: 'Read messages submitted by customers',
                 icon: Icons.star_outline_rounded,
                 onTap: () => openPage(context, const ReviewsScreen()),
+              ),
+              MenuRow(
+                title: 'Farmer Feedback',
+                subtitle: 'Read feedback sent to farmers',
+                icon: Icons.rate_review_outlined,
+                onTap: () => openPage(context, const FarmerFeedbackList()),
               ),
               MenuRow(
                 title: 'Platform Reports',
@@ -364,8 +376,18 @@ class ProfileScreen extends StatelessWidget {
                   icon: Icons.storefront_outlined,
                   onTap: () => openPage(context, const FarmEditorScreen()),
                 ),
+              if (store.role == UserRole.farmer)
+                MenuRow(
+                  title: 'Farmer feedback',
+                  subtitle: 'Messages from customers',
+                  icon: Icons.rate_review_outlined,
+                  onTap: () => openPage(
+                    context,
+                    FarmerFeedbackList(farmId: store.ownFarm.id),
+                  ),
+                ),
               MenuRow(
-                title: 'Help & Support',
+                title: 'Contact Us',
                 subtitle: 'Frequently asked questions and contact hub',
                 icon: Icons.help_outline_rounded,
                 onTap: () => openPage(context, const ContactScreen()),

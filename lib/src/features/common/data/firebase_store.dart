@@ -13,6 +13,7 @@ import 'trusted_backend.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models.dart';
 import 'store.dart';
@@ -68,11 +69,44 @@ class FirebaseStore extends HarvestStore {
   int _reportRequest = 0;
   int _limit = 100;
   final Set<String> _more = {};
+  bool _recoveringCatalog = false;
   String? _checkoutKey;
   bool _authenticating = false;
   Future<void>? _signOutOperation;
   bool _emailVerificationPending = false;
   final Map<String, bool> _pendingFollows = {};
+  Future<void> _basketWrite = Future<void>.value();
+  String _basketKey(String uid) => 'harvesthub_basket_$uid';
+
+  Future<void> _restoreBasket(String uid) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_basketKey(uid));
+    if (raw == null) return;
+    try {
+      final saved = jsonDecode(raw) as Map<String, dynamic>;
+      basket
+        ..clear()
+        ..addEntries(
+          saved.entries
+              .where((e) => e.value is int && e.value > 0)
+              .map((e) => MapEntry(e.key, e.value as int)),
+        );
+      notifyListeners();
+    } catch (_) {
+      // An invalid local cart cannot prevent the account from opening.
+    }
+  }
+
+  void _saveBasket() {
+    final uid = _auth.currentUser?.uid;
+    if (uid == null) return;
+    final value = jsonEncode(basket);
+    _basketWrite = _basketWrite.then((_) async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_basketKey(uid), value);
+    });
+  }
+
   @override
   bool get emailVerificationPending => _emailVerificationPending;
   @override
@@ -209,6 +243,7 @@ class FirebaseStore extends HarvestStore {
         _account = a;
         role = a.role;
         if (reload) {
+          if (a.role == UserRole.customer) await _restoreBasket(user.uid);
           await refresh();
           unawaited(HarvestNotifications.restore().catchError((Object _) {}));
         } else {
@@ -227,6 +262,7 @@ class FirebaseStore extends HarvestStore {
     loading = true;
     error = null;
     _more.clear();
+    _recoveringCatalog = false;
     notifyListeners();
     final generation = _generation;
     final pending = <String>{
@@ -239,25 +275,38 @@ class FirebaseStore extends HarvestStore {
     void watch(
       String name,
       Query<Map<String, dynamic>> query,
-      void Function(List<QueryDocumentSnapshot<Map<String, dynamic>>>) apply,
-    ) {
+      void Function(List<QueryDocumentSnapshot<Map<String, dynamic>>>) apply, {
+      void Function(Object)? onFailure,
+    }) {
       _subscriptions.add(
-        query.limit(_limit).snapshots().listen((s) {
-          if (generation != _generation || !authenticated) return;
-          try {
-            apply(s.docs);
-            if (s.size == _limit) {
-              _more.add(name);
-            } else {
-              _more.remove(name);
-            }
-            pending.remove(name);
-            loading = pending.isNotEmpty;
-            notifyListeners();
-          } catch (e) {
-            _error(e);
-          }
-        }, onError: _error),
+        query
+            .limit(_limit)
+            .snapshots()
+            .listen(
+              (s) {
+                if (generation != _generation || !authenticated) return;
+                try {
+                  apply(s.docs);
+                  if (s.size == _limit) {
+                    _more.add(name);
+                  } else {
+                    _more.remove(name);
+                  }
+                  pending.remove(name);
+                  loading = pending.isNotEmpty;
+                  notifyListeners();
+                } catch (e) {
+                  _error(e);
+                }
+              },
+              onError: (Object e) {
+                if (onFailure != null) {
+                  onFailure(e);
+                } else {
+                  _error(e);
+                }
+              },
+            ),
       );
     }
 
@@ -276,14 +325,27 @@ class FirebaseStore extends HarvestStore {
         ..clear()
         ..addAll(_parse(d, readFarm));
     });
-    Query<Map<String, dynamic>> pq = _db
-        .collection('products')
-        .where('archived', isEqualTo: false);
-    watch('products', pq.orderBy(FieldPath.documentId), (d) {
-      products
-        ..clear()
-        ..addAll(_parse(d, readProduct));
-    });
+    Query<Map<String, dynamic>> pq = _db.collection('products');
+    if (role != UserRole.admin) {
+      pq = pq.where('archived', isEqualTo: false);
+    }
+    watch(
+      'products',
+      pq.orderBy(FieldPath.documentId),
+      (d) {
+        products
+          ..clear()
+          ..addAll(_parse(d, readProduct));
+        if (products.isEmpty) unawaited(_restorePublicCatalog(generation));
+      },
+      onFailure: (e) {
+        debugPrint('HarvestHub product stream failure: $e');
+        pending.remove('products');
+        loading = pending.isNotEmpty;
+        notifyListeners();
+        unawaited(_restorePublicCatalog(generation));
+      },
+    );
     watch(
       'categories',
       _db.collection('categories').orderBy(FieldPath.documentId),
@@ -303,6 +365,7 @@ class FirebaseStore extends HarvestStore {
               ),
             ),
           );
+        if (named.isEmpty) _seedDefaultCategories();
       },
     );
     Query<Map<String, dynamic>> oq = _db.collection('orders');
@@ -317,6 +380,7 @@ class FirebaseStore extends HarvestStore {
             final old = previous[o.id];
             if (old != null) {
               old.status = o.status;
+              old.approvalStatus = o.approvalStatus;
               return old;
             }
             return o;
@@ -387,7 +451,67 @@ class FirebaseStore extends HarvestStore {
         },
       );
     }
+    // The public endpoint has a smaller paged response and can populate the
+    // published catalog while a signed-in Firestore stream is still starting.
+    unawaited(_restorePublicCatalog(generation));
     if (role != UserRole.customer) unawaited(loadReport(36500));
+  }
+
+  Future<void> _restorePublicCatalog(int generation) async {
+    if (_recoveringCatalog || products.isNotEmpty) return;
+    _recoveringCatalog = true;
+    try {
+      final recovered = <Product>[];
+      final recoveredFarms = <Farm>[];
+      Map<String, dynamic> cursors = {};
+      for (var page = 0; page < 100; page++) {
+        final data = await TrustedBackend.publicCatalog(cursors);
+        for (final value in data['products'] as List? ?? const []) {
+          final row = Map<String, dynamic>.from(value as Map);
+          recovered.add(
+            Product(
+              id: row['id'] as String? ?? '',
+              name: row['name'] as String? ?? '',
+              category: row['category'] as String? ?? '',
+              farmId: row['farmId'] as String? ?? '',
+              price: (row['price'] as num? ?? 0).toInt(),
+              stock: (row['stock'] as num? ?? 0).toInt(),
+              image: row['image'] as String? ?? '',
+              unit: row['unit'] as String? ?? 'kg',
+              description: row['description'] as String? ?? '',
+            ),
+          );
+        }
+        for (final value in data['farms'] as List? ?? const []) {
+          final row = Map<String, dynamic>.from(value as Map);
+          recoveredFarms.add(
+            Farm(
+              id: row['id'] as String? ?? '',
+              name: row['name'] as String? ?? '',
+              owner: '',
+              location: row['location'] as String? ?? '',
+              market: row['market'] as String? ?? '',
+              description: row['description'] as String? ?? '',
+              image: row['image'] as String? ?? '',
+            ),
+          );
+        }
+        cursors = Map<String, dynamic>.from(data['cursors'] as Map? ?? {});
+        if (cursors['products'] == null) break;
+      }
+      if (generation != _generation || _disposed || products.isNotEmpty) return;
+      if (farms.isEmpty) farms.addAll(recoveredFarms);
+      products.addAll(recovered);
+      notifyListeners();
+    } catch (e) {
+      debugPrint('HarvestHub catalog recovery failed: $e');
+      if (generation == _generation && !_disposed && products.isEmpty) {
+        error = 'Could not load products. Check your connection and retry.';
+        notifyListeners();
+      }
+    } finally {
+      _recoveringCatalog = false;
+    }
   }
 
   @override
@@ -455,7 +579,9 @@ class FirebaseStore extends HarvestStore {
       final account = doc.exists ? readAccount(doc) : null;
       if (!doc.exists || account == null || !account.active) {
         await _auth.signOut();
-        return 'This account is unavailable or has been suspended.';
+        return account?.approvalStatus == 'pending'
+            ? 'Your account is awaiting administrator approval.'
+            : 'This account is unavailable or has been suspended.';
       }
       if (TrustedBackend.enabled && result.user?.email != account.email) {
         await TrustedBackend.call('syncEmail');
@@ -486,18 +612,50 @@ class FirebaseStore extends HarvestStore {
     _authenticating = true;
     try {
       final normalizedPhone = normalizePhoneNumber(phone);
-      await _auth.createUserWithEmailAndPassword(
-        email: email.trim(),
-        password: password,
-      );
-      await _call('registerProfile', {
-        'name': name.trim(),
-        'phone': normalizedPhone,
-        'address': address.trim(),
-        'role': selected.name,
-      });
+      var createdHere = false;
+      try {
+        await _auth.createUserWithEmailAndPassword(
+          email: email.trim(),
+          password: password,
+        );
+        createdHere = true;
+      } on FirebaseAuthException catch (e) {
+        if (e.code != 'email-already-in-use') rethrow;
+        // Recover an Auth account left without a Firestore profile by an
+        // earlier failed registration, using the same email and password.
+        final existing = await _auth.signInWithEmailAndPassword(
+          email: email.trim(),
+          password: password,
+        );
+        final profile = await _db.doc('users/${existing.user!.uid}').get();
+        if (profile.exists) {
+          await _auth.signOut();
+          return 'An account already uses this email. Please sign in.';
+        }
+      }
+      try {
+        await _call('registerProfile', {
+          'name': name.trim(),
+          'phone': normalizedPhone,
+          'address': address.trim(),
+          'role': selected.name,
+        });
+      } catch (_) {
+        // A failed profile write must not leave an Auth account that cannot
+        // register again with the same email address.
+        if (createdHere) {
+          try {
+            await _auth.currentUser?.delete();
+          } catch (_) {
+            await _auth.signOut();
+          }
+        }
+        rethrow;
+      }
+      await _auth.signOut();
       return null;
     } catch (e) {
+      await _auth.signOut();
       return serviceError(e);
     } finally {
       _authenticating = false;
@@ -551,6 +709,25 @@ class FirebaseStore extends HarvestStore {
         _syncNotifications();
         if (role != UserRole.customer) unawaited(loadReport(36500));
       });
+
+  bool _seededCategories = false;
+
+  /// Temporary dummy categories; created once by an admin when none exist.
+  void _seedDefaultCategories() {
+    if (_seededCategories || role != UserRole.admin) return;
+    _seededCategories = true;
+    for (final name in const [
+      'Grains',
+      'Dairy',
+      'Nuts',
+      'Vegetables',
+      'Fruits',
+      'Pulses',
+    ]) {
+      saveCategory(name);
+    }
+  }
+
   @override
   Future<String?> saveCategory(String value, {String? previous}) =>
       _mutate('saveCategory', {'name': value.trim(), 'previous': ?previous});
@@ -560,6 +737,9 @@ class FirebaseStore extends HarvestStore {
   @override
   Future<String?> toggleAccount(Account value) =>
       _mutate('toggleAccount', {'id': value.id, 'active': !value.active});
+  @override
+  Future<String?> decideApproval(String type, String id, bool approve) =>
+      _mutate('decideApproval', {'type': type, 'id': id, 'approve': approve});
   @override
   Future<String?> saveAccount(Account value) async {
     try {
@@ -658,12 +838,14 @@ class FirebaseStore extends HarvestStore {
     if (quantity <= 0) {
       basket.remove(id);
       _checkoutKey = null;
+      _saveBasket();
       notifyListeners();
       return null;
     }
     if (p == null || quantity > p.stock) return 'This quantity is unavailable.';
     basket[id] = quantity;
     _checkoutKey = null;
+    _saveBasket();
     notifyListeners();
     return null;
   }
@@ -790,6 +972,7 @@ class FirebaseStore extends HarvestStore {
       }
       basket.clear();
       _checkoutKey = null;
+      _saveBasket();
       return docs.map(readOrder).toList();
     } catch (e) {
       throw StateError(serviceError(e));
@@ -920,6 +1103,7 @@ Account readAccount(DocumentSnapshot<Map<String, dynamic>> doc) {
     address: _s(d, 'address'),
     avatar: _s(d, 'avatar'),
     active: d['active'] == true,
+    approvalStatus: _s(d, 'approvalStatus', 'approved'),
     createdAt: _date(d['createdAt']),
     updatedAt: _date(d['updatedAt']),
   );
@@ -951,9 +1135,12 @@ Product readProduct(DocumentSnapshot<Map<String, dynamic>> doc) {
     farmId: _s(d, 'farmId'),
     price: _n(d, 'price'),
     stock: _n(d, 'stock'),
+    initialStock: _n(d, 'initialStock'),
     image: _s(d, 'image'),
     unit: _s(d, 'unit', 'kg'),
     description: _s(d, 'description'),
+    approvalStatus: _s(d, 'approvalStatus', 'approved'),
+    archived: d['archived'] == true,
   );
 }
 
@@ -978,6 +1165,7 @@ HarvestOrder readOrder(DocumentSnapshot<Map<String, dynamic>> doc) {
     date: _date(d['createdAt'])!,
     address: _s(d, 'address'),
     status: status,
+    approvalStatus: _s(d, 'approvalStatus', 'approved'),
     items: (d['items'] as List).map((raw) {
       final x = Map<String, dynamic>.from(raw as Map);
       return OrderLine(

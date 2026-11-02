@@ -35,6 +35,8 @@ class PublicContent {
     'aboutFooterTagline': 'Fresh from farms. Closer to you.',
     'contactEmail': '',
     'contactPhone': '',
+    'contactName': 'HarvestHub Support',
+    'contactAddress': '',
   };
 }
 

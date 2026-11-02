@@ -151,7 +151,12 @@ class HarvestStore extends ChangeNotifier {
         }.values.toList()
       : role == UserRole.customer
       ? catalogProducts(products.where((p) => farm(p.farmId).active))
-      : {for (final p in products) p.id: p}.values.toList();
+      : {
+          for (final p in products.where(
+            (p) => p.approvalStatus == 'approved' && !p.archived,
+          ))
+            p.id: p,
+        }.values.toList();
   List<HarvestOrder> get visibleOrders =>
       orders
           .where(
@@ -166,6 +171,7 @@ class HarvestStore extends ChangeNotifier {
           .toList()
         ..sort((a, b) => b.date.compareTo(a.date));
   int get basketCount => basket.values.fold(0, (a, b) => a + b);
+  int get basketProductCount => basket.length;
   int get basketTotal => basket.entries.fold(
     0,
     (a, e) => a + (product(e.key)?.price ?? 0) * e.value,
@@ -407,6 +413,9 @@ class HarvestStore extends ChangeNotifier {
     notifyListeners();
     return null;
   }
+
+  FutureOr<String?> decideApproval(String type, String id, bool approve) =>
+      'Approval decisions require a live administrator account.';
 
   void changed() => notifyListeners();
 }

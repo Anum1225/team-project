@@ -57,9 +57,10 @@ void main() {
 
   for (final scale in [1.0, 1.6]) {
     testWidgets(
-      'product card Add to cart fits narrow grid at text $scale and adds item',
+      'product card Add to cart fits narrow grid at text $scale and opens details',
       (tester) async {
         final store = PreviewStore();
+        var opened = 0;
         await tester.pumpWidget(
           HarvestScope(
             store: store,
@@ -73,7 +74,7 @@ void main() {
                       width: 326,
                       child: ProductGrid(
                         products: [store.product('tomato')!],
-                        onOpen: (_) {},
+                        onOpen: (_) => opened++,
                       ),
                     ),
                   ),
@@ -87,7 +88,8 @@ void main() {
         expect(find.byIcon(Icons.add), findsNothing);
         await tester.tap(find.text('Add to cart'));
         await tester.pump();
-        expect(store.basket['tomato'], 1);
+        expect(opened, 1);
+        expect(store.basket, isEmpty);
         expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox());
       },

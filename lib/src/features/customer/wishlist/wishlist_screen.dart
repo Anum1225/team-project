@@ -66,9 +66,9 @@ class _WishlistScreenState extends State<WishlistScreen> {
         actions: [
           IconButton(
             icon: Badge(
-              isLabelVisible: store.basketCount > 0,
+              isLabelVisible: store.basketProductCount > 0,
               label: Text(
-                '${store.basketCount}',
+                '${store.basketProductCount}',
                 style: const TextStyle(
                   fontSize: 10,
                   fontWeight: FontWeight.w800,

@@ -238,6 +238,8 @@ class _PublicContentEditorState extends State<PublicContentEditor> {
                   field('aboutFooterBrand', 'Footer name'),
                   field('aboutFooterTagline', 'Footer tagline'),
                   const SectionHeader('Support contact'),
+                  field('contactName', 'Office name'),
+                  field('contactAddress', 'Office address'),
                   HarvestField(
                     controller: fields['contactEmail']!,
                     label: 'Public support email',

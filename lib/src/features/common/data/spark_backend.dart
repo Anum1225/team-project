@@ -38,7 +38,8 @@ class SparkBackend {
           'role': data['role'],
           'phone': normalizePhoneNumber(text(data['phone'])),
           'address': text(data['address'], optional: true),
-          'active': true,
+          'active': false,
+          'approvalStatus': 'pending',
           'createdAt': stamp,
         });
         if (data['role'] == 'farmer') {
@@ -49,7 +50,7 @@ class SparkBackend {
             'market': '',
             'description': '',
             'image': '',
-            'active': true,
+            'active': false,
             'createdAt': stamp,
           });
         }
@@ -102,7 +103,160 @@ class SparkBackend {
       final actor = (await tx.get(db.doc('users/$uid'))).data()!;
       final admin = actor['role'] == 'admin';
       if (actor['active'] != true) fail('This account is suspended.');
-      if (action == 'saveAccount' || action == 'toggleAccount') {
+      if (action == 'decideApproval') {
+        if (!admin) fail('Administrator access required.');
+        final type = v['type'];
+        final approve = v['approve'] == true;
+        final id = text(v['id'], max: 160);
+        if (type == 'account') {
+          final ref = db.doc('users/$id');
+          final target = await tx.get(ref);
+          if (!target.exists ||
+              target.data()!['approvalStatus'] != 'pending' ||
+              target.data()!['role'] == 'admin') {
+            fail('This account is no longer awaiting approval.');
+          }
+          final farm = await tx.get(db.doc('farms/$id'));
+          tx.update(ref, {
+            'approvalStatus': approve ? 'approved' : 'rejected',
+            'active': approve,
+            'updatedAt': stamp,
+          });
+          if (farm.exists) {
+            tx.update(farm.reference, {'active': approve, 'updatedAt': stamp});
+          }
+          if (approve) {
+            tx.set(db.doc('users/$id/notifications/approval_account_$id'), {
+              'title': 'Account approved',
+              'body': 'Your account was approved. You can now sign in.',
+              'target': '',
+              'pushDelivered': false,
+              'createdAt': stamp,
+            });
+          }
+        } else if (type == 'product') {
+          final ref = db.doc('products/$id');
+          final product = await tx.get(ref);
+          if (!product.exists ||
+              product.data()!['approvalStatus'] != 'pending' ||
+              product.data()!['archived'] != true) {
+            fail('This product is no longer awaiting approval.');
+          }
+          final category = db.doc(
+            'categories/${product.data()!['categoryId']}',
+          );
+          final cat = await tx.get(category);
+          final owner = (await tx.get(
+            db.doc('farms/${product.data()!['farmId']}'),
+          )).data()?['owner'];
+          if (approve && !cat.exists) {
+            fail('Product category no longer exists.');
+          }
+          tx.update(ref, {
+            'approvalStatus': approve ? 'approved' : 'rejected',
+            'archived': !approve,
+            'updatedAt': stamp,
+          });
+          if (approve) {
+            tx.update(category, {
+              'productCount': (cat.data()!['productCount'] as int) + 1,
+              'lastProductId': id,
+            });
+          }
+          if (owner is String && owner.isNotEmpty) {
+            tx.set(db.doc('users/$owner/notifications/approval_product_$id'), {
+              'title': approve ? 'Product approved' : 'Product rejected',
+              'body':
+                  '${product.data()!['name']} was ${approve ? 'approved' : 'rejected'} by the administrator.',
+              'target': 'product:$id',
+              'pushDelivered': false,
+              'createdAt': stamp,
+            });
+          }
+        } else if (type == 'order') {
+          final ref = db.doc('orders/$id');
+          final order = await tx.get(ref);
+          if (!order.exists ||
+              order.data()!['approvalStatus'] != 'pending' ||
+              order.data()!['status'] != 'pending') {
+            fail('This order is no longer awaiting approval.');
+          }
+          final farm = await tx.get(db.doc('farms/${order.data()!['farmId']}'));
+          if (!farm.exists || farm.data()!['active'] != true) {
+            fail('The farm is unavailable.');
+          }
+          final lines = (order.data()!['items'] as List);
+          final productRefs = <DocumentReference<Map<String, dynamic>>>[];
+          final products = <DocumentSnapshot<Map<String, dynamic>>>[];
+          for (final line in lines) {
+            final productRef = db.doc('products/${line['productId']}');
+            productRefs.add(productRef);
+            products.add(await tx.get(productRef));
+          }
+          if (approve) {
+            var expectedTotal = 0;
+            for (var i = 0; i < lines.length; i++) {
+              final line = lines[i];
+              final product = products[i].data();
+              if (product == null ||
+                  product['archived'] == true ||
+                  product['farmId'] != order.data()!['farmId'] ||
+                  product['name'] != line['name'] ||
+                  product['price'] != line['price'] ||
+                  product['unit'] != line['unit'] ||
+                  product['image'] != line['image'] ||
+                  line['quantity'] is! int ||
+                  line['quantity'] <= 0) {
+                fail(
+                  'Order items changed. Reject this order and ask the customer to try again.',
+                );
+              }
+              expectedTotal +=
+                  (line['price'] as int) * (line['quantity'] as int);
+            }
+            if (expectedTotal != order.data()!['total']) {
+              fail('Order total is invalid. Reject this order.');
+            }
+            tx.update(ref, {
+              'approvalStatus': 'approved',
+              'farmerId': farm.data()!['owner'],
+              'updatedAt': stamp,
+            });
+          } else {
+            for (var i = 0; i < products.length; i++) {
+              if (products[i].exists &&
+                  products[i].data()!['archived'] == false) {
+                tx.update(productRefs[i], {
+                  'stock': products[i].data()!['stock'] + lines[i]['quantity'],
+                  'updatedAt': stamp,
+                });
+              }
+            }
+            tx.update(ref, {
+              'approvalStatus': 'rejected',
+              'status': 'cancelled',
+              'updatedAt': stamp,
+            });
+          }
+          final customerId = order.data()!['customerId'];
+          if (customerId is String && customerId.isNotEmpty) {
+            tx.set(
+              db.doc('users/$customerId/notifications/approval_order_$id'),
+              {
+                'title': approve ? 'Order approved' : 'Order rejected',
+                'body': approve
+                    ? 'Your order was approved and sent to the farmer.'
+                    : 'Your order was rejected by the administrator.',
+                'target': 'order:$id',
+                'pushDelivered': false,
+                'createdAt': stamp,
+              },
+            );
+          }
+        } else {
+          fail('Unknown approval type.');
+        }
+      } else if (action == 'saveAccount' || action == 'toggleAccount') {
         final ref = db.doc('users/${v['id']}');
         final target = (await tx.get(ref)).data();
         if (target == null || (!admin && v['id'] != uid)) {
@@ -111,6 +265,10 @@ class SparkBackend {
         if (action == 'toggleAccount') {
           if (!admin || target['role'] == 'admin' || v['id'] == uid) {
             fail('Administrator accounts cannot be suspended here.');
+          }
+          if (target['approvalStatus'] != null &&
+              target['approvalStatus'] != 'approved') {
+            fail('Only approved accounts can be reactivated.');
           }
           final farm = await tx.get(db.doc('farms/${v['id']}'));
           tx.update(ref, {'active': v['active'], 'updatedAt': stamp});
@@ -245,19 +403,29 @@ class SparkBackend {
             'categoryId': catRef.id,
             'price': v['price'],
             'stock': v['stock'],
+            'initialStock': existing?['initialStock'] is int
+                ? (existing!['initialStock'] as int).clamp(
+                    v['stock'] as int,
+                    1000000000,
+                  )
+                : v['stock'],
             'image': v['image'] ?? '',
             'unit': text(v['unit'], max: 60),
             'description': text(v['description'], optional: true, max: 5000),
-            'archived': false,
+            'archived': existing == null && !admin,
+            'approvalStatus':
+                existing?['approvalStatus'] ?? (admin ? 'approved' : 'pending'),
             'createdAt': existing?['createdAt'] ?? stamp,
             'updatedAt': stamp,
           });
-          tx.update(catRef, {
-            'productCount':
-                (cat.data()!['productCount'] as int) +
-                (existing == null || oldRef != null ? 1 : 0),
-            'lastProductId': ref.id,
-          });
+          if (existing != null || admin) {
+            tx.update(catRef, {
+              'productCount':
+                  (cat.data()!['productCount'] as int) +
+                  (existing == null || oldRef != null ? 1 : 0),
+              'lastProductId': ref.id,
+            });
+          }
           if (oldCat?.exists == true) {
             tx.update(oldRef!, {
               'productCount': (oldCat!.data()!['productCount'] as int) - 1,
@@ -269,6 +437,9 @@ class SparkBackend {
         final ref = db.doc('orders/${v['id']}');
         final order = (await tx.get(ref)).data();
         if (order == null) fail('Order no longer exists.');
+        if (order['approvalStatus'] == 'pending') {
+          fail('An administrator must approve this order first.');
+        }
         const next = {
           'pending': 'confirmed',
           'confirmed': 'ready',
@@ -312,8 +483,8 @@ class SparkBackend {
 
   Future<Map<String, dynamic>> checkout(Map<String, dynamic> d) async {
     final items = (d['items'] as List);
-    if (items.isEmpty || items.length > 3) {
-      fail('Choose up to 3 different products per checkout.');
+    if (items.isEmpty) {
+      fail('Choose at least one product before checkout.');
     }
     if (items.map((i) => i['id']).toSet().length != items.length) {
       fail('Duplicate basket item.');
@@ -340,7 +511,7 @@ class SparkBackend {
           farms[id] = (await tx.get(db.doc('farms/$id'))).data()!;
         }
       }
-      final ids = <String>[];
+      final grouped = <String, List<Map<String, dynamic>>>{};
       for (var i = 0; i < products.length; i++) {
         final snap = products[i];
         final p = snap.data()!;
@@ -359,8 +530,41 @@ class SparkBackend {
             f['active'] != true) {
           fail('An item is no longer available. Refresh your basket.');
         }
+        grouped.putIfAbsent(p['farmId'] as String, () => []).add({
+          'snapshot': snap,
+          'quantity': q,
+        });
+      }
+      final ids = <String>[];
+      for (final entry in grouped.entries) {
+        final lines = entry.value;
+        if (lines.length > 8) {
+          fail(
+            'Choose up to 8 different products from one farmer per checkout.',
+          );
+        }
+        final f = farms[entry.key]!;
         final ref = db.collection('orders').doc();
         ids.add(ref.id);
+        final orderLines = <Map<String, dynamic>>[];
+        final quantities = <String, int>{};
+        var total = 0;
+        for (final item in lines) {
+          final snap =
+              item['snapshot'] as DocumentSnapshot<Map<String, dynamic>>;
+          final p = snap.data()!;
+          final q = item['quantity'] as int;
+          total += (p['price'] as int) * q;
+          orderLines.add({
+            'productId': snap.id,
+            'name': p['name'],
+            'image': p['image'],
+            'unit': p['unit'],
+            'price': p['price'],
+            'quantity': q,
+          });
+          quantities[snap.id] = q;
+        }
         tx.set(ref, {
           'customerId': uid,
           'customerName': actor['name'],
@@ -368,23 +572,16 @@ class SparkBackend {
           'phone': phone,
           'note': note,
           'paymentMethod': 'cashOnDelivery',
-          'farmId': p['farmId'],
-          'farmerId': f['owner'],
+          'farmId': entry.key,
+          'farmerId': '',
           'farmName': f['name'],
           'market': f['market'],
-          'items': [
-            {
-              'productId': snap.id,
-              'name': p['name'],
-              'image': p['image'],
-              'unit': p['unit'],
-              'price': p['price'],
-              'quantity': q,
-            },
-          ],
-          'total': p['price'] * q,
+          'items': orderLines,
+          'quantities': quantities,
+          'total': total,
           'address': address,
           'status': 'pending',
+          'approvalStatus': 'pending',
           'createdAt': stamp,
         });
         if (pickupSlot.isNotEmpty) {
@@ -393,11 +590,16 @@ class SparkBackend {
             'updatedAt': stamp,
           });
         }
-        tx.update(snap.reference, {
-          'stock': p['stock'] - q,
-          'lastOrderId': ref.id,
-          'updatedAt': stamp,
-        });
+        for (final item in lines) {
+          final snap =
+              item['snapshot'] as DocumentSnapshot<Map<String, dynamic>>;
+          final q = item['quantity'] as int;
+          tx.update(snap.reference, {
+            'stock': (snap.data()!['stock'] as int) - q,
+            'lastOrderId': ref.id,
+            'updatedAt': stamp,
+          });
+        }
       }
       tx.set(receipt, {'orderIds': ids, 'createdAt': stamp, 'userId': uid});
       return {'orderIds': ids};

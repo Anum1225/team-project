@@ -351,21 +351,38 @@ function notice_(uid, eventId, title, body, target) {
   write_(path, { pushDelivered: true }, true);
 }
 function eventId_(path, stamp) { return Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, path + ':' + stamp).map(b => ('0' + ((b + 256) % 256).toString(16)).slice(-2)).join(''); }
+function sendApproval_(uid, type, id) {
+  if (!uid) return false;
+  const eventId = 'approval_' + type + '_' + id;
+  const record = read_('users/' + uid + '/notifications/' + eventId);
+  if (!record) return false;
+  if (record.data.pushDelivered !== true) notice_(uid, eventId, record.data.title, record.data.body, record.data.target || '');
+  return true;
+}
 function processUpdate_(row, type) {
   const d = row.data, key = eventId_(row.path, row.updateTime), id = row.path.split('/').pop();
   const statePath = 'notificationState/' + eventId_(row.path, 'state'), prior = read_(statePath);
   if (prior && prior.data.updateTime === row.updateTime) return;
   if (type === 'orders') {
-    if (!prior) notice_(d.farmerId, key + '_new', 'New order', 'A new order is ready to review for ' + d.farmName + '.', 'order:' + id);
-    if ((!prior && d.status !== 'pending') || (prior && prior.data.status !== d.status)) notice_(d.customerId, key + '_status', 'Order update', 'Your order is now ' + (d.status === 'ready' ? 'ready for pickup' : d.status) + '.', 'order:' + id);
-    write_(statePath, { updateTime: row.updateTime, status: d.status });
+    if ((!prior && d.farmerId) || (prior && prior.data.farmerId === '' && d.farmerId && d.approvalStatus === 'approved')) notice_(d.farmerId, key + '_new', 'New approved order', 'A new order is ready to review for ' + d.farmName + '.', 'order:' + id);
+    const directApproval = ['approved', 'rejected'].includes(d.approvalStatus) && sendApproval_(d.customerId, 'order', id);
+    if (!directApproval && prior && prior.data.approvalStatus === 'pending' && d.approvalStatus === 'approved') notice_(d.customerId, key + '_approved', 'Order approved', 'Your order has been approved and sent to the farmer.', 'order:' + id);
+    if (((!prior && d.status !== 'pending') || (prior && prior.data.status !== d.status)) && !(directApproval && d.approvalStatus === 'rejected')) notice_(d.customerId, key + '_status', 'Order update', 'Your order is now ' + (d.status === 'ready' ? 'ready for pickup' : d.status) + '.', 'order:' + id);
+    write_(statePath, { updateTime: row.updateTime, status: d.status, farmerId: d.farmerId || '', approvalStatus: d.approvalStatus || 'approved' });
   } else if (type === 'pickups') {
     if (!prior || prior.data.slot !== d.slot) {
       const order = read_('orders/' + id);
       if (order) notice_(order.data.farmerId, key, 'Pickup booking changed', d.slot ? 'Requested window: ' + d.slot : 'The customer cancelled the pickup booking.', 'order:' + id);
     }
     write_(statePath, { updateTime: row.updateTime, slot: d.slot || null });
+  } else if (type === 'farmersMarkets') {
+    if (['approved', 'rejected'].includes(d.approvalStatus) && (!prior || prior.data.approvalStatus !== d.approvalStatus)) sendApproval_(d.owner, 'market', id);
+    write_(statePath, { updateTime: row.updateTime, approvalStatus: d.approvalStatus || null });
   } else {
+    if (['approved', 'rejected'].includes(d.approvalStatus) && (!prior || prior.data.approvalStatus !== d.approvalStatus)) {
+      const farm = read_('farms/' + d.farmId);
+      if (farm) sendApproval_(farm.data.owner, 'product', id);
+    }
     if (!d.archived && prior && prior.data.stock > 5 && d.stock <= 5) {
       const farm = read_('farms/' + d.farmId);
       if (farm) notice_(farm.data.owner, key + '_low', 'Low stock', d.name + ': ' + d.stock + ' remaining.', 'product:' + id);
@@ -376,14 +393,14 @@ function processUpdate_(row, type) {
       const users = [...new Set(saved.concat(followed).map(p => p.path.split('/')[1]))];
       users.forEach(uid => notice_(uid, key, 'Back in stock', d.name + ' is available again.', 'product:' + id));
     }
-    write_(statePath, { updateTime: row.updateTime, stock: d.stock });
+    write_(statePath, { updateTime: row.updateTime, stock: d.stock, approvalStatus: d.approvalStatus || null });
   }
 }
 function syncNotifications() {
   // The scheduled trigger retries failures. App mutations also call this
   // endpoint for prompt delivery, without needing a paid Firestore trigger.
   return locked_(() => {
-    for (const spec of [['orders','createdAt',false], ['orders','updatedAt',false], ['products','updatedAt',false], ['pickups','updatedAt',true]]) {
+    for (const spec of [['orders','createdAt',false], ['orders','updatedAt',false], ['products','updatedAt',false], ['farmersMarkets','updatedAt',false], ['pickups','updatedAt',true]]) {
       const path = 'backendCursors/' + spec[0] + '_' + spec[1];
       const cursor = read_(path);
       const since = cursor ? cursor.data.time : new Date(Date.now() - 86400000);

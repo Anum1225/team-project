@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Captures the previous frame so theme changes bloom with an
 /// awards-level chromatic shockwave and fluid radial reveal, and provides
@@ -23,6 +24,7 @@ class ThemeReveal extends StatefulWidget {
 
 class _ThemeRevealState extends State<ThemeReveal>
     with SingleTickerProviderStateMixin {
+  static const _themeKey = 'harvesthub_theme_mode';
   final boundary = GlobalKey();
   late final animation = AnimationController(
     vsync: this,
@@ -33,6 +35,20 @@ class _ThemeRevealState extends State<ThemeReveal>
   Offset origin = Offset.zero;
   bool switching = false;
   bool nextIsDark = false;
+
+  @override
+  void initState() {
+    super.initState();
+    SharedPreferences.getInstance().then((prefs) {
+      if (!mounted) return;
+      final saved = prefs.getString(_themeKey);
+      if (saved == 'light' || saved == 'dark') {
+        setState(
+          () => mode = saved == 'light' ? ThemeMode.light : ThemeMode.dark,
+        );
+      }
+    });
+  }
 
   Future<void> toggle(BuildContext context) async {
     if (switching) return;
@@ -52,6 +68,10 @@ class _ThemeRevealState extends State<ThemeReveal>
       if (!mounted) return;
       animation.value = 0;
       setState(() => mode = currentDark ? ThemeMode.light : ThemeMode.dark);
+      await (await SharedPreferences.getInstance()).setString(
+        _themeKey,
+        mode.name,
+      );
       await animation.forward();
     } finally {
       if (mounted) {

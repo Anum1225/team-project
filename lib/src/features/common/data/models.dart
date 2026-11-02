@@ -36,6 +36,7 @@ class Account {
     this.address = '',
     this.avatar = '',
     this.active = true,
+    this.approvalStatus = 'approved',
     this.createdAt,
     this.updatedAt,
   });
@@ -43,6 +44,7 @@ class Account {
   String name, email, phone, address, avatar;
   final UserRole role;
   bool active;
+  final String approvalStatus;
   final DateTime? createdAt;
   final DateTime? updatedAt;
 }
@@ -78,15 +80,20 @@ class Product {
     required this.farmId,
     required this.price,
     required this.stock,
+    this.initialStock = 0,
     required this.image,
     this.unit = 'kg',
     this.description = '',
     this.photo,
+    this.approvalStatus = 'approved',
+    this.archived = false,
   });
   final String id;
   String name, category, farmId, image, unit, description;
-  int price, stock;
+  int price, stock, initialStock;
   Uint8List? photo;
+  final String approvalStatus;
+  final bool archived;
   String get displayImage => productDisplayImage(image, name);
 }
 
@@ -122,6 +129,7 @@ class HarvestOrder {
     this.note = '',
     this.paymentMethod = 'cashOnDelivery',
     this.status = OrderStatus.pending,
+    this.approvalStatus = 'approved',
   });
   final String id, customerId, customerName, farmId, farmName, address;
   final String recipientName, phone, note, paymentMethod;
@@ -130,6 +138,7 @@ class HarvestOrder {
   final DateTime date;
   final List<OrderLine> items;
   OrderStatus status;
+  String approvalStatus;
   int get total => items.fold(0, (sum, item) => sum + item.total);
 }
 

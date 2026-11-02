@@ -33,10 +33,12 @@ async function notify(uid, eventId, title, body) {
 
 exports.orderCreated = onDocumentCreated(options('orders/{id}'), async e => {
   const d = e.data.data();
-  await notify(d.farmerId, e.id, 'New order', `A new order is ready to review for ${d.farmName}.`);
+  if (d.farmerId) await notify(d.farmerId, e.id, 'New order', `A new order is ready to review for ${d.farmName}.`);
 });
 exports.orderUpdated = onDocumentUpdated(options('orders/{id}'), async e => {
   const before = e.data.before.data(), after = e.data.after.data();
+  if (!before.farmerId && after.farmerId && after.approvalStatus === 'approved') await notify(after.farmerId, e.id, 'New approved order', `A new order is ready to review for ${after.farmName}.`);
+  if (before.approvalStatus === 'pending' && after.approvalStatus === 'approved') await notify(after.customerId, e.id, 'Order approved', 'Your order has been approved and sent to the farmer.');
   if (before.status !== after.status) await notify(after.customerId, e.id, 'Order update', `Your order is now ${after.status === 'ready' ? 'ready for pickup' : after.status}.`);
 });
 exports.pickupChanged = onDocumentWritten(options('users/{uid}/pickups/{id}'), async e => {

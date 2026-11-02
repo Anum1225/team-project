@@ -3,7 +3,7 @@ const assert=require('node:assert/strict');
 const fs=require('node:fs');
 const path=require('node:path');
 const {initializeTestEnvironment,assertFails,assertSucceeds}=require('@firebase/rules-unit-testing');
-const {doc,setDoc,getDoc,updateDoc,writeBatch,serverTimestamp,runTransaction,arrayUnion,arrayRemove}=require('firebase/firestore');
+const {doc,setDoc,getDoc,getDocs,collection,query,where,orderBy,documentId,updateDoc,writeBatch,serverTimestamp,runTransaction,arrayUnion,arrayRemove}=require('firebase/firestore');
 let env; const now=()=>serverTimestamp();
 before(async()=>{
  env=await initializeTestEnvironment({projectId:'demo-harvesthub',firestore:{rules:fs.readFileSync(path.join(__dirname,'../../config/firebase/firestore.rules'),'utf8')}});
@@ -19,6 +19,16 @@ after(async()=>env?.cleanup());
 const proof=email=>({firebase:{sign_in_provider:'custom'},hh_email_2fa:true,hh_security_version:0,hh_verified_email:email});
 const db=role=>env.authenticatedContext(role,{email:`${role}@test.local`,...proof(`${role}@test.local`)}).firestore();
 const product=()=>({name:'Carrot',farmId:'farmer',farmName:'Farm',category:'Vegetables',categoryId:'VmVn',price:250,stock:10,image:'',unit:'kg',description:'Fresh',archived:false,createdAt:now(),updatedAt:now()});
+
+test('product catalog queries load for all roles', async () => {
+ await env.withSecurityRulesDisabled(c=>setDoc(doc(c.firestore(),'products/catalog-check'),product()));
+ for(const role of ['admin','farmer','customer']) {
+  const products=collection(db(role),'products');
+  const q=role==='admin' ? query(products,orderBy(documentId())) : query(products,where('archived','==',false),orderBy(documentId()));
+  const rows=await assertSucceeds(getDocs(q));
+  assert.ok(rows.docs.some(row=>row.id==='catalog-check'));
+ }
+});
 
 test('farm-banner ownership and image size are enforced', async () => {
  await env.withSecurityRulesDisabled(async c => {
@@ -56,19 +66,33 @@ test('password sessions can register a customer or farmer but must verify before
   const uid=`register-${role}`, email=`${uid}@test.local`;
   const d=env.authenticatedContext(uid,{email,firebase:{sign_in_provider:'password'}}).firestore();
   const b=writeBatch(d);
-  b.set(doc(d,`users/${uid}`),{name:'New account',email,role,phone:'',address:'',active:true,createdAt:now()});
-  if(role==='farmer') b.set(doc(d,`farms/${uid}`),{name:'New account',owner:uid,location:'',market:'',description:'',image:'',active:true,createdAt:now()});
+  b.set(doc(d,`users/${uid}`),{name:'New account',email,role,phone:'',address:'',active:false,approvalStatus:'pending',createdAt:now()});
+  if(role==='farmer') b.set(doc(d,`farms/${uid}`),{name:'New account',owner:uid,location:'',market:'',description:'',image:'',active:false,createdAt:now()});
   await assertSucceeds(b.commit());
   await assertSucceeds(getDoc(doc(d,`users/${uid}`)));
+  const pending=(await assertSucceeds(getDocs(query(collection(db('admin'),'users'),orderBy(documentId()))))).docs.find(row=>row.id===uid);
+  assert.equal(pending?.data().approvalStatus,'pending');
+  assert.equal(pending?.data().active,false);
+  const notification=(await assertSucceeds(getDocs(query(collection(db('admin'),'users'),where('approvalStatus','==','pending'))))).docs.find(row=>row.id===uid);
+  assert.equal(notification?.id,uid);
   await assertFails(getDoc(doc(d,'categories/VmVn')));
+  await assertFails(updateDoc(doc(d,`users/${uid}`),{active:true,updatedAt:now()}));
+  const adminDb=db('admin'), approval=writeBatch(adminDb);
+  approval.update(doc(adminDb,`users/${uid}`),{active:true,approvalStatus:'approved',updatedAt:now()});
+  if(role==='farmer') approval.update(doc(adminDb,`farms/${uid}`),{active:true,updatedAt:now()});
+  await assertSucceeds(approval.commit());
+  const approved=env.authenticatedContext(uid,{email,...proof(email)}).firestore();
+  await assertSucceeds(getDoc(doc(approved,'categories/VmVn')));
  }
 });
 test('free-plan registration and roles',async()=>{
- const d=db('new');const p={name:'New',email:'new@test.local',role:'customer',phone:'',address:'',active:true,createdAt:now()};
+ const d=db('new');const p={name:'New',email:'new@test.local',role:'customer',phone:'',address:'',active:false,approvalStatus:'pending',createdAt:now()};
  await assertFails(setDoc(doc(d,'users/new'),{...p,role:'admin'}));
  await assertSucceeds(setDoc(doc(d,'users/new'),p));
  await assertFails(updateDoc(doc(d,'users/new'),{role:'admin'}));
  await assertFails(getDoc(doc(d,'users/admin')));
+ await assertFails(updateDoc(doc(d,'users/new'),{avatar:'preset:2',updatedAt:now()}));
+ await assertSucceeds(updateDoc(doc(db('admin'),'users/new'),{active:true,approvalStatus:'approved',updatedAt:now()}));
  await assertSucceeds(updateDoc(doc(d,'users/new'),{avatar:'preset:2',updatedAt:now()}));
  await assertFails(updateDoc(doc(db('admin'),'users/admin'),{active:false,updatedAt:now()}));
 });
@@ -81,16 +105,63 @@ test('admin contact edits and suspension; farmer own catalog transaction',async(
  await assertFails(updateDoc(doc(a,'users/admin'),{active:false,updatedAt:now()}));
  const f=db('farmer');
  await assertFails(setDoc(doc(f,'products/missing-counter'),product()));
- const b=writeBatch(f);
- b.set(doc(f,'products/carrot'),product());b.update(doc(f,'categories/VmVn'),{productCount:1,lastProductId:'carrot'});
+ await assertSucceeds(setDoc(doc(f,'products/carrot'),{...product(),archived:true,approvalStatus:'pending'}));
+ await assertFails(getDoc(doc(db('customer'),'products/carrot')));
+ await assertFails(updateDoc(doc(f,'products/carrot'),{archived:false,approvalStatus:'approved',updatedAt:now()}));
+ const b=writeBatch(a);
+ b.update(doc(a,'products/carrot'),{archived:false,approvalStatus:'approved',updatedAt:now()});
+ b.update(doc(a,'categories/VmVn'),{productCount:1,lastProductId:'carrot'});
  await assertSucceeds(b.commit());
  await assertFails(updateDoc(doc(db('customer'),'products/carrot'),{price:1,updatedAt:now()}));
  await assertFails(updateDoc(doc(f,'products/carrot'),{price:-1,updatedAt:now()}));
  await assertFails(updateDoc(doc(f,'categories/VmVn'),{productCount:99,lastProductId:'carrot'}));
 });
+test('farmer can create and read a pending product through the app transaction flow',async()=>{
+ const f=db('farmer'), ref=doc(f,'products/farmer-pending');
+ await assertSucceeds(runTransaction(f,async tx=>{
+  const prior=await tx.get(ref);
+  assert.equal(prior.exists(),false);
+  const farm=await tx.get(doc(f,'farms/farmer'));
+  const category=await tx.get(doc(f,'categories/VmVn'));
+  assert.equal(farm.data().owner,'farmer');
+  assert.equal(category.data().name,'Vegetables');
+  tx.set(ref,{...product(),archived:true,approvalStatus:'pending'});
+ }));
+ const pending=await assertSucceeds(getDoc(ref));
+ assert.equal(pending.data().approvalStatus,'pending');
+ await assertFails(getDoc(doc(db('customer'),'products/farmer-pending')));
+});
+test('admin product transaction can read a missing product before creation', async()=>{
+ const a=db('admin'), ref=doc(a,'products/admin-new');
+ await assertSucceeds(runTransaction(a,async tx=>{
+  assert.equal((await tx.get(ref)).exists(),false);
+  assert.equal((await tx.get(doc(a,'farms/farmer'))).exists(),true);
+  assert.equal((await tx.get(doc(a,'categories/VmVn'))).exists(),true);
+  tx.set(ref,{...product(),initialStock:10});
+  tx.update(doc(a,'categories/VmVn'),{productCount:1,lastProductId:'admin-new'});
+ }));
+});
+test('farmer markets need admin approval and customer feedback is visible to the farmer',async()=>{
+ const f=db('farmer'), a=db('admin'), c=db('customer');
+ const market=doc(f,'farmersMarkets/farmer-new');
+ await assertSucceeds(setDoc(market,{name:'Farm Market',location:'Street',hours:'Sat',lat:24.9,lng:67.0,active:false,owner:'farmer',approvalStatus:'pending',updatedAt:now()}));
+ await assertFails(updateDoc(market,{active:true,approvalStatus:'approved',updatedAt:now()}));
+ await assertSucceeds(updateDoc(doc(a,'farmersMarkets/farmer-new'),{active:true,approvalStatus:'approved',updatedAt:now()}));
+ const feedback=doc(c,'farmerFeedback/first');
+ await assertSucceeds(setDoc(feedback,{farmId:'farmer',customerId:'customer',name:'Customer',email:'customer@test.local',message:'Great produce',createdAt:now()}));
+ await assertSucceeds(getDoc(doc(f,'farmerFeedback/first')));
+ await assertFails(getDoc(doc(db('otherfarmer'),'farmerFeedback/first')));
+});
+test('administrator can deliver an approval notice to the farmer inbox',async()=>{
+ const a=db('admin'), f=db('farmer');
+ const notice=doc(a,'users/farmer/notifications/approval_product_carrot');
+ await assertSucceeds(setDoc(notice,{title:'Product approved',body:'Carrot was approved.',target:'product:carrot',pushDelivered:false,createdAt:now()}));
+ await assertSucceeds(getDoc(doc(f,'users/farmer/notifications/approval_product_carrot')));
+ await assertFails(setDoc(doc(f,'users/farmer/notifications/forged'),{title:'Fake',body:'Fake',createdAt:now()}));
+});
 async function purchase(id,{price=250,qty=2,stock=8,contact={}}={}){
  const d=db('customer'), b=writeBatch(d);
- b.set(doc(d,`orders/${id}`),{customerId:'customer',customerName:'Customer',farmId:'farmer',farmerId:'farmer',farmName:'Farm',market:'Market',items:[{productId:'carrot',name:'Carrot',image:'',unit:'kg',price,quantity:qty}],total:price*qty,address:'Test address',status:'pending',createdAt:now(),...contact});
+ b.set(doc(d,`orders/${id}`),{customerId:'customer',customerName:'Customer',farmId:'farmer',farmerId:'',farmName:'Farm',market:'Market',items:[{productId:'carrot',name:'Carrot',image:'',unit:'kg',price,quantity:qty}],quantities:{carrot:qty},total:price*qty,address:'Test address',status:'pending',approvalStatus:'pending',createdAt:now(),...contact});
  b.update(doc(d,'products/carrot'),{stock,lastOrderId:id,updatedAt:now()});
  return b.commit();
 }
@@ -109,6 +180,10 @@ test('checkout validates snapshots and commits stock with order atomically',asyn
  await assertFails(updateDoc(doc(db('customer'),'orders/valid'),{phone:'+923009999999'}));
  await assertSucceeds(setDoc(doc(db('customer'),'users/customer/pickups/valid'),{slot:'11 AM - 1 PM',updatedAt:now()}));
  await assertFails(setDoc(doc(db('customer'),'users/customer/pickups/valid'),{slot:'Not published',updatedAt:now()}));
+ await assertFails(getDoc(doc(db('farmer'),'orders/valid')));
+ await assertFails(updateDoc(doc(db('farmer'),'orders/valid'),{status:'confirmed',updatedAt:now()}));
+ await assertFails(getDoc(doc(db('farmer'),'users/customer/pickups/valid')));
+ await assertSucceeds(updateDoc(doc(db('admin'),'orders/valid'),{farmerId:'farmer',approvalStatus:'approved',updatedAt:now()}));
  await assertSucceeds(getDoc(doc(db('farmer'),'users/customer/pickups/valid')));
  await assertFails(setDoc(doc(db('customer'),'users/customer/pickups/orphan'),{slot:'11 AM - 1 PM',updatedAt:now()}));
  assert.equal((await getDoc(doc(db('admin'),'products/carrot'))).data().stock,8);
@@ -132,20 +207,47 @@ test('customer feedback is private and immutable',async()=>{
  await assertFails(getDoc(doc(c,'feedback/test')));await assertSucceeds(getDoc(doc(db('admin'),'feedback/test')));
 });
 
-test('three-product checkout stays within rule transaction limits',async()=>{
+test('four-farm checkout is accepted without the old three-order limit',async()=>{
  await env.withSecurityRulesDisabled(async c=>{
   const d=c.firestore();
-  for(let i=1;i<=3;i++) {
+  for(let i=1;i<=4;i++) {
    await setDoc(doc(d,`farms/f${i}`),{owner:`f${i}`,name:`Farm ${i}`,market:'Market',active:true});
    await setDoc(doc(d,`products/p${i}`),{...product(),farmId:`f${i}`,farmName:`Farm ${i}`});
   }
  });
  const d=db('customer'),b=writeBatch(d);
- for(let i=1;i<=3;i++) {
-  b.set(doc(d,`orders/multi${i}`),{customerId:'customer',customerName:'Customer',farmId:`f${i}`,farmerId:`f${i}`,farmName:`Farm ${i}`,market:'Market',items:[{productId:`p${i}`,name:'Carrot',image:'',unit:'kg',price:250,quantity:2}],total:500,address:'Test',status:'pending',createdAt:now()});
+ for(let i=1;i<=4;i++) {
+  b.set(doc(d,`orders/multi${i}`),{customerId:'customer',customerName:'Customer',farmId:`f${i}`,farmerId:'',farmName:`Farm ${i}`,market:'Market',items:[{productId:`p${i}`,name:'Carrot',image:'',unit:'kg',price:250,quantity:2}],quantities:{[`p${i}`]:2},total:500,address:'Test',status:'pending',approvalStatus:'pending',createdAt:now()});
   b.update(doc(d,`products/p${i}`),{stock:8,lastOrderId:`multi${i}`,updatedAt:now()});
  }
- b.set(doc(d,'checkoutRequests/customer_multi'),{userId:'customer',orderIds:['multi1','multi2','multi3'],createdAt:now()});
+ b.set(doc(d,'checkoutRequests/customer_multi'),{userId:'customer',orderIds:['multi1','multi2','multi3','multi4'],createdAt:now()});
+ await assertSucceeds(b.commit());
+});
+
+test('one order can contain four products from the same farm',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const d=c.firestore();
+  for(let i=1;i<=4;i++) await setDoc(doc(d,`products/group${i}`),{...product(),name:`Crop ${i}`});
+ });
+ const d=db('customer'), b=writeBatch(d);
+ b.set(doc(d,'orders/grouped'),{customerId:'customer',customerName:'Customer',farmId:'farmer',farmerId:'',farmName:'Farm',market:'Market',items:[1,2,3,4].map(i=>({productId:`group${i}`,name:`Crop ${i}`,image:'',unit:'kg',price:250,quantity:2})),quantities:{group1:2,group2:2,group3:2,group4:2},total:2000,address:'Test',status:'pending',approvalStatus:'pending',createdAt:now()});
+ for(let i=1;i<=4;i++) b.update(doc(d,`products/group${i}`),{stock:8,lastOrderId:'grouped',updatedAt:now()});
+ b.set(doc(d,'checkoutRequests/customer_grouped'),{userId:'customer',orderIds:['grouped'],createdAt:now()});
+ await assertSucceeds(b.commit());
+ assert.equal((await getDoc(doc(d,'orders/grouped'))).data().items.length,4);
+});
+
+test('one order can contain eight products from the same farm',async()=>{
+ await env.withSecurityRulesDisabled(async c=>{
+  const d=c.firestore();
+  for(let i=1;i<=8;i++) await setDoc(doc(d,`products/bulk${i}`),{...product(),name:`Bulk crop ${i}`});
+ });
+ const d=db('customer'), b=writeBatch(d);
+ const ids=[1,2,3,4,5,6,7,8];
+ b.set(doc(d,'orders/bulk'),{customerId:'customer',customerName:'Customer',farmId:'farmer',farmerId:'',farmName:'Farm',market:'Market',items:ids.map(i=>({productId:`bulk${i}`,name:`Bulk crop ${i}`,image:'',unit:'kg',price:250,quantity:1})),quantities:Object.fromEntries(ids.map(i=>[`bulk${i}`,1])),total:2000,address:'Test',status:'pending',approvalStatus:'pending',createdAt:now()});
+ for(const i of ids) b.update(doc(d,`products/bulk${i}`),{stock:9,lastOrderId:'bulk',updatedAt:now()});
+ b.set(doc(d,'users/customer/pickups/bulk'),{slot:'11 AM - 1 PM',updatedAt:now()});
+ b.set(doc(d,'checkoutRequests/customer_bulk'),{userId:'customer',orderIds:['bulk'],createdAt:now()});
  await assertSucceeds(b.commit());
 });
 

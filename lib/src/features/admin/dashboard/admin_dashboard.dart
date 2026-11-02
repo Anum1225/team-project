@@ -46,6 +46,15 @@ class _AdminDashboardState extends State<AdminDashboard> {
                 ProfileScreen(onExit: () => Navigator.maybePop(context)),
               ),
             ),
+            ListTile(
+              leading: const Icon(Icons.fact_check_outlined),
+              title: const Text('Pending approvals'),
+              subtitle: Text(
+                '${store.accounts.where((a) => a.approvalStatus == 'pending').length + store.products.where((p) => p.approvalStatus == 'pending').length + store.orders.where((o) => o.approvalStatus == 'pending').length} requests to review',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => openPage(context, const AdminApprovalsScreen()),
+            ),
 
             // 2. Greeting Header matching reference Image 1
             Container(
@@ -174,6 +183,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     pillText: 'Live',
                     icon: Icons.people_alt_rounded,
                     iconColor: const Color(0xFF10B981),
+                    onTap: () => openPage(context, const UsersScreen()),
                   ),
                   _AdminMetricCard(
                     title: 'Farmers',
@@ -182,6 +192,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     pillText: 'Live',
                     icon: Icons.eco_rounded,
                     iconColor: const Color(0xFF059669),
+                    onTap: () => openPage(
+                      context,
+                      const UsersScreen(initialFilter: 'Farmers'),
+                    ),
                   ),
                   _AdminMetricCard(
                     title: 'Customers',
@@ -190,6 +204,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     pillText: 'Live',
                     icon: Icons.shopping_basket_rounded,
                     iconColor: const Color(0xFF2563EB),
+                    onTap: () => openPage(
+                      context,
+                      const UsersScreen(initialFilter: 'Customers'),
+                    ),
                   ),
                   _AdminMetricCard(
                     title: 'Products',
@@ -198,6 +216,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
                     pillText: 'Live',
                     icon: Icons.inventory_2_rounded,
                     iconColor: const Color(0xFF8B5CF6),
+                    onTap: widget.onProducts,
                   ),
                 ];
 

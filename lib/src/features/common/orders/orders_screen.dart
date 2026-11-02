@@ -1,7 +1,8 @@
 part of 'orders.dart';
 
 class OrdersScreen extends StatefulWidget {
-  const OrdersScreen({super.key});
+  const OrdersScreen({super.key, this.initialAccountId, this.initialFarmerId});
+  final String? initialAccountId, initialFarmerId;
 
   @override
   State<OrdersScreen> createState() => _OrdersScreenState();
@@ -11,7 +12,44 @@ class _OrdersScreenState extends State<OrdersScreen> {
   final TextEditingController _search = TextEditingController();
   String _query = "";
   bool _oldest = false;
-  String _selected = 'Active';
+  String _sort = 'Newest first';
+  late String _selected =
+      widget.initialAccountId != null || widget.initialFarmerId != null
+      ? 'All'
+      : 'Active';
+
+  Future<void> _showSort() async {
+    var sort = _sort;
+    await showModalBottomSheet<void>(
+      context: context,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, update) => SheetBody(
+          children: [
+            const PageHeading('Sort orders'),
+            ChoiceRow(
+              values: const [
+                'Newest first',
+                'Oldest first',
+                'Total: low to high',
+                'Total: high to low',
+              ],
+              selected: sort,
+              onSelected: (value) => update(() => sort = value),
+            ),
+            const SizedBox(height: 12),
+            HarvestButton(
+              label: 'Apply',
+              onPressed: () {
+                setState(() => _sort = sort);
+                Navigator.pop(sheetContext);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -52,6 +90,17 @@ class _OrdersScreenState extends State<OrdersScreen> {
     ];
 
     final orders = allOrders.where((o) {
+      if (widget.initialAccountId != null &&
+          o.customerId != widget.initialAccountId) {
+        return false;
+      }
+      if (widget.initialFarmerId != null &&
+          !store.farms.any(
+            (farm) =>
+                farm.id == o.farmId && farm.owner == widget.initialFarmerId,
+          )) {
+        return false;
+      }
       if (!'${o.id} ${o.customerName} ${o.customerId} ${o.farmName} ${o.farmId}'
           .toLowerCase()
           .contains(_query.toLowerCase().trim())) {
@@ -70,7 +119,18 @@ class _OrdersScreenState extends State<OrdersScreen> {
       return o.status.label == _selected;
     }).toList();
 
-    if (_oldest) orders.sort((a, b) => a.date.compareTo(b.date));
+    if (store.role != UserRole.customer) {
+      orders.sort(
+        (a, b) => switch (_sort) {
+          'Oldest first' => a.date.compareTo(b.date),
+          'Total: low to high' => a.total.compareTo(b.total),
+          'Total: high to low' => b.total.compareTo(a.total),
+          _ => b.date.compareTo(a.date),
+        },
+      );
+    } else if (_oldest) {
+      orders.sort((a, b) => a.date.compareTo(b.date));
+    }
 
     return Scaffold(
       backgroundColor: palette.canvas,
@@ -95,12 +155,21 @@ class _OrdersScreenState extends State<OrdersScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: _oldest ? 'Sorted: Oldest first' : 'Sorted: Newest first',
+            tooltip: store.role == UserRole.customer
+                ? (_oldest ? 'Sorted: Oldest first' : 'Sorted: Newest first')
+                : 'Sort orders',
             icon: Icon(
               Icons.tune_rounded,
-              color: _oldest ? palette.green : null,
+              color:
+                  (store.role == UserRole.customer
+                      ? _oldest
+                      : _sort != 'Newest first')
+                  ? palette.green
+                  : null,
             ),
-            onPressed: () => setState(() => _oldest = !_oldest),
+            onPressed: store.role != UserRole.customer
+                ? _showSort
+                : () => setState(() => _oldest = !_oldest),
           ),
           const SizedBox(width: 6),
         ],
@@ -239,6 +308,11 @@ class _OrdersScreenState extends State<OrdersScreen> {
             )
           else
             for (final o in orders) OrderCard(order: o),
+          if (store.hasMore)
+            TextButton(
+              onPressed: store.loadMore,
+              child: const Text('Load more orders'),
+            ),
         ],
       ),
     );

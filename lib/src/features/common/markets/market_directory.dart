@@ -11,41 +11,33 @@ import '../location/location_picker.dart';
 import '../data/models.dart';
 import '../../customer/customer.dart' show FarmerTile;
 
-/// Published markets take precedence. Farmer-provided market names still appear
-/// when an administrator has not created the separate directory record yet.
+/// Only administrator-approved markets appear in the public directory.
 List<Map<String, dynamic>> marketListings(
   List<Map<String, dynamic>> published,
   List<Farm> farms, {
   bool admin = false,
+  String? ownerId,
 }) {
   String key(String name) =>
       name.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
-  final records = <String, Map<String, dynamic>>{};
-  for (final row in published) {
-    final name = row['name'] as String? ?? '';
-    if (name.trim().isNotEmpty) records[key(name)] = {...row};
-  }
-  for (final farm in farms.where(
-    (f) => f.active && f.market.trim().isNotEmpty,
-  )) {
-    records.putIfAbsent(
-      key(farm.market),
-      () => {
-        'name': farm.market.trim(),
-        'location': '',
-        'hours': '',
-        'active': true,
-        'farmProvided': true,
-      },
-    );
-  }
-  return records.entries
-      .where((entry) => admin || entry.value['active'] == true)
+  return published
+      .where((row) => (row['name'] as String? ?? '').trim().isNotEmpty)
+      .where(
+        (entry) =>
+            admin ||
+            (entry['active'] == true &&
+                entry['approvalStatus'] != 'pending' &&
+                entry['approvalStatus'] != 'rejected') ||
+            (ownerId != null && entry['owner'] == ownerId),
+      )
       .map(
-        (entry) => {
-          ...entry.value,
+        (entry) => <String, dynamic>{
+          ...entry,
           'farms': farms
-              .where((f) => f.active && key(f.market) == entry.key)
+              .where(
+                (f) =>
+                    f.active && key(f.market) == key(entry['name'] as String),
+              )
               .toList(),
         },
       )
@@ -63,7 +55,7 @@ class MarketDirectory extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Farmers markets'),
         actions: [
-          if (admin)
+          if (admin || store.role == UserRole.farmer)
             IconButton(
               tooltip: 'Add market',
               icon: const Icon(Icons.add),
@@ -89,7 +81,7 @@ class MarketDirectory extends StatelessWidget {
           }
           final rows = marketListings(
             [
-              ...store.publicMarkets,
+              if (!store.live) ...store.publicMarkets,
               for (final doc
                   in snapshot.data?.docs ??
                       <QueryDocumentSnapshot<Map<String, dynamic>>>[])
@@ -97,11 +89,12 @@ class MarketDirectory extends StatelessWidget {
             ],
             store.farms,
             admin: admin,
+            ownerId: store.role == UserRole.farmer ? store.account.id : null,
           );
           if (rows.isEmpty) {
             return Center(
               child: Text(
-                admin ? 'No markets yet. Tap + to publish a market.' : 'No markets listed yet. Farmers can add their market in their farm profile.',
+                admin ? 'No markets yet. Tap + to publish a market.' : 'No markets listed yet. Farmers can submit a market for approval.',
               ),
             );
           }
@@ -132,6 +125,10 @@ class MarketDirectory extends StatelessWidget {
                       ),
                       if (d['farmProvided'] == true)
                         const Text('Listed by local farmers'),
+                      if (d['approvalStatus'] == 'pending')
+                        const Text('Awaiting administrator approval'),
+                      if (d['approvalStatus'] == 'rejected')
+                        const Text('Rejected by administrator'),
                       for (final farm in farms) FarmerTile(farm: farm),
                       if (d['lat'] != null && d['lng'] != null)
                         const Text('Map location saved'),
@@ -199,6 +196,8 @@ class _MarketEditorState extends State<MarketEditor> {
     }
     setState(() => busy = true);
     try {
+      final store = HarvestScope.of(context);
+      final farmer = store.role == UserRole.farmer;
       final ref = FirebaseFirestore.instance
           .collection('farmersMarkets')
           .doc(widget.id);
@@ -208,7 +207,13 @@ class _MarketEditorState extends State<MarketEditor> {
         'hours': hours.text.trim(),
         'lat': latitude,
         'lng': longitude,
-        'active': active,
+        'active': farmer ? false : active,
+        if (farmer) 'owner': store.account.id,
+        if (farmer) 'approvalStatus': 'pending',
+        if (!farmer && widget.data['owner'] != null)
+          'owner': widget.data['owner'],
+        if (!farmer && widget.data['approvalStatus'] != null)
+          'approvalStatus': widget.data['approvalStatus'],
         'updatedAt': FieldValue.serverTimestamp(),
       });
       if (mounted) Navigator.pop(context);
@@ -259,11 +264,12 @@ class _MarketEditorState extends State<MarketEditor> {
               },
             ),
           ),
-          SwitchListTile.adaptive(
-            value: active,
-            onChanged: (v) => setState(() => active = v),
-            title: const Text('Visible to customers'),
-          ),
+          if (HarvestScope.of(context).role == UserRole.admin)
+            SwitchListTile.adaptive(
+              value: active,
+              onChanged: (v) => setState(() => active = v),
+              title: const Text('Visible to customers'),
+            ),
           HarvestButton(label: 'Save market', onPressed: busy ? null : save),
         ],
       ),
@@ -288,6 +294,8 @@ class PublishedContent extends StatelessWidget {
         final text = contact
             ? [
                 d['contactEmail'],
+                d['contactName'],
+                d['contactAddress'],
                 d['contactPhone'],
               ].whereType<String>().where((v) => v.isNotEmpty).join('\n')
             : d['about'] as String? ?? '';

@@ -8,10 +8,13 @@ class ContactScreen extends StatefulWidget {
 
 class _ContactScreenState extends State<ContactScreen> {
   final form = GlobalKey<FormState>();
-  final email = TextEditingController(), message = TextEditingController();
+  final name = TextEditingController(),
+      email = TextEditingController(),
+      message = TextEditingController();
   bool sent = false;
   @override
   void dispose() {
+    name.dispose();
     email.dispose();
     message.dispose();
     super.dispose();
@@ -19,7 +22,7 @@ class _ContactScreenState extends State<ContactScreen> {
 
   @override
   Widget build(BuildContext context) => HarvestPage(
-    title: 'Get in touch',
+    title: 'Contact Us',
     child: Form(
       key: form,
       child: ListView(
@@ -59,6 +62,13 @@ class _ContactScreenState extends State<ContactScreen> {
           const PublishedContent(contact: true),
           const SectionHeader('Send us a message'),
           HarvestField(
+            controller: name,
+            label: 'Your name',
+            validator: (v) =>
+                (v ?? '').trim().isEmpty ? 'Enter your name.' : null,
+          ),
+          const SizedBox(height: 16),
+          HarvestField(
             controller: email,
             label: 'Your email address',
             keyboard: TextInputType.emailAddress,
@@ -74,8 +84,10 @@ class _ContactScreenState extends State<ContactScreen> {
                 ? null
                 : () async {
                     if (!form.currentState!.validate()) return;
-                    final result = await HarvestScope.of(context)
-                        .sendFeedback(email.text, message.text);
+                    final result = await HarvestScope.of(context).sendFeedback(
+                      email.text,
+                      'From: ${name.text.trim()}\n${message.text.trim()}',
+                    );
                     if (!context.mounted) return;
                     if (result != null) {
                       notice(context, result, isError: true);

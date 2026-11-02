@@ -59,15 +59,20 @@ class BasketScreen extends StatelessWidget {
                     ),
                     child: Row(
                       children: [
-                        ClipRRect(
+                        InkWell(
+                          onTap: () =>
+                              openPage(context, ProductScreen(product: p)),
                           borderRadius: BorderRadius.circular(14),
-                          child: Photo(
-                            p.displayImage,
-                            bytes: p.photo,
-                            width: 68,
-                            height: 68,
-                            radius: 14,
-                            label: p.name,
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(14),
+                            child: Photo(
+                              p.displayImage,
+                              bytes: p.photo,
+                              width: 68,
+                              height: 68,
+                              radius: 14,
+                              label: p.name,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 14),
@@ -75,12 +80,23 @@ class BasketScreen extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                p.name,
-                                style: const TextStyle(
-                                  fontFamily: 'Manrope',
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 14.5,
+                              InkWell(
+                                onTap: () => openPage(
+                                  context,
+                                  ProductScreen(product: p),
+                                ),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: Text(
+                                    p.name,
+                                    style: const TextStyle(
+                                      fontFamily: 'Manrope',
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 14.5,
+                                    ),
+                                  ),
                                 ),
                               ),
                               const SizedBox(height: 2),

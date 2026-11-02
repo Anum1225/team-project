@@ -10,6 +10,7 @@ class LiveReports extends StatefulWidget {
 class _LiveReportsState extends State<LiveReports> {
   int days = 7;
   Future<Map<String, dynamic>>? result;
+  bool exporting = false;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -23,11 +24,85 @@ class _LiveReportsState extends State<LiveReports> {
     });
   }
 
+  Future<void> downloadPdf() async {
+    if (exporting) return;
+    setState(() => exporting = true);
+    try {
+      final data = await result;
+      if (data == null || data.isEmpty) {
+        throw StateError('No report data available.');
+      }
+      if (!mounted) return;
+      final store = HarvestScope.of(context);
+      final document = pw.Document();
+      final statuses = data['statuses'] as Map? ?? const {};
+      final generated = DateTime.now();
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4,
+          build: (_) => [
+            pw.Header(
+              level: 0,
+              child: pw.Text(
+                'HarvestHub ${store.role == UserRole.admin ? 'Platform' : 'Farm'} Report',
+              ),
+            ),
+            if (store.role == UserRole.farmer)
+              pw.Text('Farm: ${store.ownFarm.name}'),
+            pw.Text('Period: Last $days days'),
+            pw.Text(
+              'Generated: ${generated.day}/${generated.month}/${generated.year}',
+            ),
+            pw.SizedBox(height: 16),
+            pw.Text('Total orders: ${data['totalOrders'] ?? 0}'),
+            pw.Text(
+              'Order value: ${money((data['orderValue'] as num? ?? 0).toInt())}',
+            ),
+            pw.Text(
+              'Completed order value: ${money((data['completedValue'] as num? ?? 0).toInt())}',
+            ),
+            pw.Text('Products: ${data['products'] ?? 0}'),
+            pw.Text('Out of stock: ${data['outOfStock'] ?? 0}'),
+            pw.SizedBox(height: 16),
+            pw.Header(level: 1, child: pw.Text('Orders by status')),
+            for (final status in OrderStatus.values)
+              pw.Text('${status.label}: ${statuses[status.name] ?? 0}'),
+          ],
+        ),
+      );
+      await Printing.layoutPdf(
+        name:
+            'HarvestHub-${store.role == UserRole.admin ? 'platform' : 'farm'}-report-${generated.year}-${generated.month}-${generated.day}.pdf',
+        onLayout: (_) => document.save(),
+      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not download the PDF report.')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => exporting = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
       title: Text(widget.title),
       actions: [
+        if (HarvestScope.of(context).role != UserRole.customer)
+          IconButton(
+            tooltip: 'Download PDF',
+            onPressed: exporting ? null : downloadPdf,
+            icon: exporting
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.picture_as_pdf_outlined),
+          ),
         IconButton(
           tooltip: 'Refresh reports',
           onPressed: reload,

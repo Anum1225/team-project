@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:untitled/src/app.dart';
 import 'package:untitled/src/features/common/data/models.dart';
 
@@ -9,6 +10,7 @@ import 'test_support.dart';
 
 void main() {
   setUpAll(loadHarvestFonts);
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   testWidgets(
     'settings theme switch changes palette and preserves the signed-in session',
     (tester) async {
@@ -47,6 +49,19 @@ void main() {
       await tester.tap(find.byType(SwitchListTile));
       await tester.pumpAndSettle();
       await tester.pageBack();
+      await tester.pumpAndSettle();
+      expect(
+        Theme.of(tester.element(find.byType(AppShell))).brightness,
+        Brightness.light,
+      );
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pumpWidget(
+        HarvestHubApp(
+          store: PreviewStore(),
+          initialRole: UserRole.admin,
+          skipStartup: true,
+        ),
+      );
       await tester.pumpAndSettle();
       expect(
         Theme.of(tester.element(find.byType(AppShell))).brightness,

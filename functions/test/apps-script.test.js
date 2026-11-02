@@ -259,6 +259,39 @@ test('notification processing deduplicates updates and fans out genuine restocks
   assert.match(sent.at(-1)[3], /cancelled/);
 });
 
+test('approved orders notify the farmer and customer once', () => {
+  const { ctx } = service();
+  const sent = [];
+  ctx.Utilities.DigestAlgorithm = { SHA_256: 'sha256' };
+  ctx.Utilities.computeDigest = (_, value) => [...crypto.createHash('sha256').update(value).digest()];
+  ctx.notice_ = (...args) => sent.push(args);
+  const pending = { path: 'orders/order', updateTime: 'one', data: { farmerId: '', customerId: 'customer', farmName: 'Farm', status: 'pending', approvalStatus: 'pending' } };
+  ctx.processUpdate_(pending, 'orders');
+  assert.equal(sent.length, 0);
+  const approved = { ...pending, updateTime: 'two', data: { ...pending.data, farmerId: 'farmer', approvalStatus: 'approved' } };
+  ctx.processUpdate_(approved, 'orders');
+  ctx.processUpdate_(approved, 'orders');
+  assert.deepEqual(sent.map(args => [args[0], args[2]]), [['farmer', 'New approved order'], ['customer', 'Order approved']]);
+});
+
+test('approval inbox records reach the existing push sender without duplicate order alerts', () => {
+  const { ctx, records } = service();
+  const sent = [];
+  ctx.Utilities.DigestAlgorithm = { SHA_256: 'sha256' };
+  ctx.Utilities.computeDigest = (_, value) => [...crypto.createHash('sha256').update(value).digest()];
+  ctx.notice_ = (...args) => sent.push(args);
+  records.set('farms/farmer', { owner: 'farmer' });
+  records.set('users/farmer/notifications/approval_product_crop', { title: 'Product approved', body: 'Crop approved', target: 'product:crop', pushDelivered: false });
+  records.set('users/farmer/notifications/approval_market_stall', { title: 'Market rejected', body: 'Stall rejected', target: '', pushDelivered: false });
+  records.set('users/customer/notifications/approval_order_order', { title: 'Order approved', body: 'Order approved', target: 'order:order', pushDelivered: false });
+  ctx.processUpdate_({ path: 'products/crop', updateTime: 'product-one', data: { stock: 5, farmId: 'farmer', name: 'Crop', archived: false, approvalStatus: 'approved' } }, 'products');
+  ctx.processUpdate_({ path: 'farmersMarkets/stall', updateTime: 'market-one', data: { owner: 'farmer', approvalStatus: 'rejected' } }, 'farmersMarkets');
+  ctx.processUpdate_({ path: 'orders/order', updateTime: 'order-one', data: { farmerId: 'farmer', customerId: 'customer', farmName: 'Farm', status: 'pending', approvalStatus: 'pending' } }, 'orders');
+  ctx.processUpdate_({ path: 'orders/order', updateTime: 'order-two', data: { farmerId: 'farmer', customerId: 'customer', farmName: 'Farm', status: 'pending', approvalStatus: 'approved' } }, 'orders');
+  assert.deepEqual(sent.filter(args => args[0] === 'customer').map(args => args[1]), ['approval_order_order']);
+  assert.deepEqual(sent.filter(args => args[0] === 'farmer' && args[1].startsWith('approval_')).map(args => args[1]), ['approval_product_crop', 'approval_market_stall']);
+});
+
 test('guest catalog exposes only public fields and keeps private actions authenticated', () => {
   const {ctx, records} = service();
   records.set('farms/open', {active:true});

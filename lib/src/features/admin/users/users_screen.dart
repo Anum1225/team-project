@@ -2,15 +2,26 @@ part of '../../common/management/operations.dart';
 
 String _updatedDateLabel(DateTime date) {
   const months = [
-    'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+    'Jan',
+    'Feb',
+    'Mar',
+    'Apr',
+    'May',
+    'Jun',
+    'Jul',
+    'Aug',
+    'Sep',
+    'Oct',
+    'Nov',
+    'Dec',
   ];
   final local = date.toLocal();
   return '${months[local.month - 1]} ${local.day}, ${local.year}';
 }
 
 class UsersScreen extends StatefulWidget {
-  const UsersScreen({super.key});
+  const UsersScreen({super.key, this.initialFilter = 'All'});
+  final String initialFilter;
 
   @override
   State<UsersScreen> createState() => _UsersScreenState();
@@ -18,7 +29,7 @@ class UsersScreen extends StatefulWidget {
 
 class _UsersScreenState extends State<UsersScreen> {
   final TextEditingController _search = TextEditingController();
-  String _selectedFilter = 'All';
+  late String _selectedFilter = widget.initialFilter;
 
   @override
   void dispose() {
@@ -261,7 +272,13 @@ class _UsersScreenState extends State<UsersScreen> {
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               child: Text(
-                                a.active ? 'Active' : 'Inactive',
+                                a.approvalStatus == 'pending'
+                                    ? 'Pending approval'
+                                    : a.approvalStatus == 'rejected'
+                                    ? 'Rejected'
+                                    : a.active
+                                    ? 'Active'
+                                    : 'Inactive',
                                 style: TextStyle(
                                   fontFamily: 'Manrope',
                                   fontSize: 10,

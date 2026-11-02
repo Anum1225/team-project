@@ -117,7 +117,8 @@ class _InboxIndicatorState extends State<InboxIndicator> {
       SharedPreferences.getInstance().then((prefs) {
         if (mounted && uid == accountId) {
           setState(() {
-            seenOrdersAt = prefs.getInt('harvesthub_admin_orders_seen_$accountId') ?? 0;
+            seenOrdersAt =
+                prefs.getInt('harvesthub_admin_orders_seen_$accountId') ?? 0;
           });
         }
       });
@@ -154,18 +155,29 @@ class _InboxIndicatorState extends State<InboxIndicator> {
     return StreamBuilder(
       stream: notificationInbox(uid!),
       builder: (_, snapshot) {
-        final unreadInbox = snapshot.data?.docs.any(
-              (doc) => doc.data()['readAt'] == null,
-            ) ?? false;
+        final unreadInbox =
+            snapshot.data?.docs.any((doc) => doc.data()['readAt'] == null) ??
+            false;
         if (store.role != UserRole.admin) return button(unreadInbox);
         return StreamBuilder(
-          stream: orderUpdates(uid!, UserRole.admin),
-          builder: (_, orders) => button(
-            unreadInbox ||
-                (orders.data?.docs.any(
-                      (doc) => orderUpdateTime(doc.data())
-                          .millisecondsSinceEpoch > seenOrdersAt,
-                    ) ?? false),
+          stream: pendingAccountUpdates(),
+          builder: (_, accounts) => StreamBuilder(
+            stream: pendingMarketUpdates(),
+            builder: (_, markets) => StreamBuilder(
+              stream: orderUpdates(uid!, UserRole.admin),
+              builder: (_, orders) => button(
+                unreadInbox ||
+                    (accounts.data?.docs.isNotEmpty ?? false) ||
+                    (markets.data?.docs.isNotEmpty ?? false) ||
+                    (orders.data?.docs.any(
+                          (doc) =>
+                              orderUpdateTime(doc.data())
+                                  .millisecondsSinceEpoch >
+                              seenOrdersAt,
+                        ) ??
+                        false),
+              ),
+            ),
           ),
         );
       },

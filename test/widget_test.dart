@@ -151,8 +151,6 @@ void main() {
     await tester.tap(find.text('Add to cart'));
     await tester.pumpAndSettle();
     expect(store.basketCount, 1);
-    Navigator.of(tester.element(find.text('Add to cart'))).pop();
-    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Your basket'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Continue to Checkout · Rs 180'));

@@ -118,7 +118,9 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
     notice(
       context,
       widget.product == null
-          ? 'Product added to your farm stand'
+          ? (store.role == UserRole.farmer
+                ? 'Product submitted for administrator approval'
+                : 'Product added to your farm stand')
           : 'Product updated successfully',
     );
   }
@@ -128,6 +130,22 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
     final store = HarvestScope.of(context);
     final p = widget.product;
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    // De-duplicated, and always containing the current selection, so the
+    // dropdown never asserts when categories load late or one was renamed.
+    final categoryOptions = <String>{
+      ...(store.categories.isEmpty
+          ? const [
+              'Grains',
+              'Dairy',
+              'Nuts',
+              'Vegetables',
+              'Fruits',
+              'Pulses',
+            ]
+          : store.categories),
+      if (_category != null && _category!.isNotEmpty) _category!,
+    }.toList();
+    _category ??= categoryOptions.firstOrNull;
 
     return Scaffold(
       backgroundColor: Harvest.colors(context).cream,
@@ -311,7 +329,15 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
             ),
             const SizedBox(height: 6),
             DropdownButtonFormField<String>(
+              // Rebuild when the live category list changes so the selected
+              // value always matches exactly one item.
+              key: ValueKey('category-${categoryOptions.join('|')}'),
               initialValue: _category,
+              hint: Text(
+                categoryOptions.isEmpty
+                    ? 'No categories available'
+                    : 'Select a category',
+              ),
               decoration: InputDecoration(
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -327,7 +353,7 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
                 ),
               ),
               isExpanded: true,
-              items: store.categories
+              items: categoryOptions
                   .map(
                     (c) => DropdownMenuItem(
                       value: c,
@@ -460,7 +486,14 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        items: ['kg', 'litre', 'dozen', 'pack', 'basket']
+                        items: {
+                          'kg',
+                          'litre',
+                          'dozen',
+                          'pack',
+                          'basket',
+                          if (_unit.text.isNotEmpty) _unit.text,
+                        }
                             .map(
                               (u) => DropdownMenuItem(
                                 value: u,
@@ -510,49 +543,6 @@ class _ProductEditorScreenState extends State<ProductEditorScreen> {
                                 int.parse(v) > 1000000000
                             ? 'Enter a whole number from 0 to 1,000,000,000'
                             : null,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  flex: 2,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Unit',
-                        style: TextStyle(
-                          fontFamily: 'Manrope',
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                          color: Harvest.colors(context).ink,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      DropdownButtonFormField<String>(
-                        isExpanded: true,
-                        initialValue: _unit.text.isEmpty ? 'kg' : _unit.text,
-                        decoration: InputDecoration(
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 12,
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        items: ['kg', 'litre', 'units', 'packs']
-                            .map(
-                              (u) => DropdownMenuItem(
-                                value: u,
-                                child: Text(u, overflow: TextOverflow.ellipsis),
-                              ),
-                            )
-                            .toList(),
-                        onChanged: (v) {
-                          if (v != null) setState(() => _unit.text = v);
-                        },
                       ),
                     ],
                   ),

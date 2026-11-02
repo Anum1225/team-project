@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../authentication/demo/guest_sign_in.dart';
-
 import '../data/models.dart';
 import '../data/store.dart';
 import 'theme.dart';
@@ -36,6 +34,40 @@ Future<T?> openPage<T>(BuildContext context, Widget page) =>
             curve: Curves.easeOutCubic,
             reverseCurve: Curves.easeInCubic,
           );
+          return FadeTransition(
+            opacity: curve,
+            child: SlideTransition(
+              position: Tween<Offset>(
+                begin: const Offset(0, 0.03),
+                end: Offset.zero,
+              ).animate(curve),
+              child: ScaleTransition(
+                scale: Tween<double>(begin: 0.985, end: 1.0).animate(curve),
+                child: child,
+              ),
+            ),
+          );
+        },
+      ),
+    );
+
+Future<T?> openPage1<T>(BuildContext context, Widget page) =>
+    Navigator.of(context).pushReplacement<T, dynamic>(
+      PageRouteBuilder<T>(
+        transitionDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : Harvest.routeMotion,
+        reverseTransitionDuration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : Harvest.motion,
+        pageBuilder: (_, animation, secondary) => page,
+        transitionsBuilder: (_, animation, secondary, child) {
+          final curve = CurvedAnimation(
+            parent: animation,
+            curve: Curves.easeOutCubic,
+            reverseCurve: Curves.easeInCubic,
+          );
+
           return FadeTransition(
             opacity: curve,
             child: SlideTransition(
@@ -1332,37 +1364,16 @@ class _ProductCardState extends State<ProductCard> {
                           borderRadius: BorderRadius.circular(10),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(10),
-                            onTap: p.stock == 0
-                                ? null
-                                : () {
-                                    if (store.isDemo) {
-                                      requireGuestSignIn(
-                                        context,
-                                        addingToCart: true,
-                                      );
-                                      return;
-                                    }
-                                    final error = store.setQuantity(
-                                      p.id,
-                                      (store.basket[p.id] ?? 0) + 1,
-                                    );
-                                    notice(
-                                      context,
-                                      error ?? '${p.name} added to basket',
-                                    );
-                                    if (error == null) {
-                                      HapticFeedback.lightImpact();
-                                    }
-                                  },
-                            child: const Padding(
-                              padding: EdgeInsets.symmetric(
+                            onTap: widget.onOpen,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
                                 horizontal: 6,
                                 vertical: 8,
                               ),
                               child: Text(
-                                'Add to cart',
+                                p.stock == 0 ? 'View details' : 'Add to cart',
                                 textAlign: TextAlign.center,
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 10,
                                   fontWeight: FontWeight.w700,
                                   color: Colors.white,
@@ -1709,7 +1720,7 @@ class CircularNavButton extends StatelessWidget {
   Widget build(BuildContext context) => Tooltip(
     message: tooltip ?? '',
     child: Material(
-      color: Colors.white,
+      color: Harvest.colors(context).surface,
       shape: const CircleBorder(),
       elevation: 0,
       child: InkWell(

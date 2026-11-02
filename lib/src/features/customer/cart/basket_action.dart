@@ -22,9 +22,9 @@ class BasketAction extends StatelessWidget {
           : null,
       onPressed: () => openPage(context, const BasketScreen()),
       icon: Badge(
-        isLabelVisible: store.basketCount > 0,
+        isLabelVisible: store.basketProductCount > 0,
         label: Text(
-          '${store.basketCount}',
+          '${store.basketProductCount}',
           style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
         ),
         backgroundColor: Harvest.forest,

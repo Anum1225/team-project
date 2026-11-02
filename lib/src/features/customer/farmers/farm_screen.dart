@@ -202,6 +202,16 @@ class FarmScreen extends StatelessWidget {
                       color: Harvest.colors(context).ink,
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  if (store.role == UserRole.customer)
+                    OutlinedButton.icon(
+                      onPressed: () => openPage(
+                        context,
+                        FarmerFeedbackScreen(farmId: f.id, farmName: f.name),
+                      ),
+                      icon: const Icon(Icons.rate_review_outlined),
+                      label: const Text('Send farmer feedback'),
+                    ),
                   const SizedBox(height: 24),
                   SectionHeader('Harvests Available (${products.length})'),
                   ProductGrid(

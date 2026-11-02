@@ -1,7 +1,8 @@
 part of '../management/operations.dart';
 
 class InventoryScreen extends StatefulWidget {
-  const InventoryScreen({super.key});
+  const InventoryScreen({super.key, this.initialFarmId});
+  final String? initialFarmId;
 
   @override
   State<InventoryScreen> createState() => _InventoryScreenState();
@@ -12,6 +13,82 @@ class _InventoryScreenState extends State<InventoryScreen> {
   String _filter = 'All';
   String _category = 'All';
   bool _showSearchBar = false;
+  String _sort = 'Name';
+  String? _farmId;
+
+  @override
+  void initState() {
+    super.initState();
+    _farmId = widget.initialFarmId;
+  }
+
+  Future<void> _showFilters(HarvestStore store) async {
+    var stock = _filter;
+    var farmId = _farmId;
+    var sort = _sort;
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      builder: (sheetContext) => StatefulBuilder(
+        builder: (context, update) => SheetBody(
+          children: [
+            const PageHeading('Refine products'),
+            const SectionHeader('Stock'),
+            ChoiceRow(
+              values: const ['All', 'Active', 'Low stock', 'Out of stock'],
+              selected: stock,
+              onSelected: (value) => update(() => stock = value),
+            ),
+            const SectionHeader('Farm'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 7,
+              children: [
+                ChoiceChip(
+                  label: const Text('All farms'),
+                  selected: farmId == null,
+                  onSelected: (_) => update(() => farmId = null),
+                ),
+                for (final farm in store.farms.where(
+                  (farm) =>
+                      store.role == UserRole.admin ||
+                      farm.owner == store.account.id,
+                ))
+                  ChoiceChip(
+                    label: Text(farm.name),
+                    selected: farmId == farm.id,
+                    onSelected: (_) => update(() => farmId = farm.id),
+                  ),
+              ],
+            ),
+            const SectionHeader('Sort by'),
+            ChoiceRow(
+              values: const [
+                'Name',
+                'Price: low to high',
+                'Price: high to low',
+              ],
+              selected: sort,
+              onSelected: (value) => update(() => sort = value),
+            ),
+            const SizedBox(height: 12),
+            HarvestButton(
+              label: 'Apply filters',
+              onPressed: () {
+                setState(() {
+                  _filter = stock;
+                  _farmId = farmId;
+                  _sort = sort;
+                });
+                Navigator.pop(sheetContext);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -25,7 +102,10 @@ class _InventoryScreenState extends State<InventoryScreen> {
     final admin = store.role == UserRole.admin;
     final query = _search.text.toLowerCase().trim();
 
-    final products = store.visibleProducts.where((p) {
+    final source = admin && widget.initialFarmId != null
+        ? store.products
+        : store.visibleProducts;
+    final products = source.where((p) {
       if (query.isNotEmpty &&
           !'${p.name} ${store.farm(p.farmId).name} ${p.farmId}'
               .toLowerCase()
@@ -33,11 +113,19 @@ class _InventoryScreenState extends State<InventoryScreen> {
         return false;
       }
       if (_category != 'All' && p.category != _category) return false;
+      if (_farmId != null && p.farmId != _farmId) return false;
       if (_filter == 'Active' && p.stock <= 0) return false;
       if (_filter == 'Low stock' && (p.stock <= 0 || p.stock > 5)) return false;
       if (_filter == 'Out of stock' && p.stock != 0) return false;
       return true;
     }).toList();
+    products.sort(
+      (a, b) => switch (_sort) {
+        'Price: low to high' => a.price.compareTo(b.price),
+        'Price: high to low' => b.price.compareTo(a.price),
+        _ => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+      },
+    );
 
     final categoryCounts = <String, int>{'All': store.visibleProducts.length};
     for (final c in store.categories) {
@@ -69,17 +157,7 @@ class _InventoryScreenState extends State<InventoryScreen> {
           IconButton(
             tooltip: 'Filter',
             icon: const Icon(Icons.tune_rounded),
-            onPressed: () {
-              // Toggle stock filter cycle
-              setState(() {
-                _filter = switch (_filter) {
-                  'All' => 'Active',
-                  'Active' => 'Low stock',
-                  'Low stock' => 'Out of stock',
-                  _ => 'All',
-                };
-              });
-            },
+            onPressed: () => _showFilters(store),
           ),
           Padding(
             padding: const EdgeInsets.only(right: 14, left: 4),
@@ -216,6 +294,11 @@ class _InventoryScreenState extends State<InventoryScreen> {
                   )
                 else
                   for (final p in products) InventoryRow(product: p),
+                if (store.hasMore)
+                  TextButton(
+                    onPressed: store.loadMore,
+                    child: const Text('Load more products'),
+                  ),
               ],
             ),
           ),

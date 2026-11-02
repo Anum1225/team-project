@@ -77,7 +77,8 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       error = null;
     });
     final store = HarvestScope.of(context);
-    final result = register
+    final wasRegistering = register;
+    final result = wasRegistering
         ? await store.register(
             email.text,
             password.text,
@@ -92,7 +93,22 @@ class _AuthScreenState extends State<AuthScreen> with TickerProviderStateMixin {
       busy = false;
       error = result;
     });
-    if (result == null) Navigator.of(context).popUntil((r) => r.isFirst);
+    if (result == null) {
+      if (wasRegistering) {
+        setState(() {
+          register = false;
+          step = 0;
+          password.clear();
+          confirmPassword.clear();
+        });
+        notice(
+          context,
+          'Account created. Wait for admin approval, then sign in.',
+        );
+        return;
+      }
+      Navigator.of(context).popUntil((r) => r.isFirst);
+    }
   }
 
   Widget _rise(int slot, Widget child) => AnimatedBuilder(

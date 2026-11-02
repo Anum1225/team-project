@@ -67,6 +67,7 @@ void main() async {
       expect(store.orders.length, before);
       expect(store.product('tomato')!.stock, 24);
       expect(store.basketCount, 4);
+      expect(store.basketProductCount, 2);
     },
   );
 

@@ -15,6 +15,7 @@ import 'package:geolocator/geolocator.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 
 import '../common/shared/components.dart';
 import '../common/data/models.dart';
@@ -30,6 +31,7 @@ part 'home/home_screen.dart';
 part 'search_filter/explore_screen.dart';
 part 'product_details/product_screen.dart';
 part 'farmers/farm_screen.dart';
+part 'farmers/farmer_feedback_screen.dart';
 part 'wishlist/wishlist_screen.dart';
 part 'cart/cart_screen.dart';
 part 'checkout/checkout_screen.dart';

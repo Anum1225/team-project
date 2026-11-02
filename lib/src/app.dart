@@ -3,7 +3,9 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
+
 import 'dart:async';
+
 import 'features/common/notifications/notifications.dart';
 import 'features/customer/customer.dart';
 import 'features/customer/widgets/customer_style.dart';
@@ -801,202 +803,211 @@ class _AppShellState extends State<AppShell> {
     if (store.live && !store.authenticated) return const SizedBox.shrink();
     pages.putIfAbsent(index, () => page(index));
 
-    return Scaffold(
-      backgroundColor: Harvest.colors(context).cream,
-      body: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            if (store.isDemo)
-              Material(
-                color: Harvest.colors(context).paleLeaf,
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Demo · Browse the live catalog',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: store.requestSignIn,
-                        child: const Text('Sign in'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            if ((store.live || store.isDemo) &&
-                (store.loading || store.error != null || store.hasMore))
-              const DataStatusBar(),
-            Expanded(
-              child: AnimatedSwitcher(
-                duration: MediaQuery.disableAnimationsOf(context)
-                    ? Duration.zero
-                    : const Duration(milliseconds: 280),
-                switchInCurve: Curves.easeOutCubic,
-                switchOutCurve: Curves.easeInCubic,
-                transitionBuilder: (child, animation) {
-                  return FadeTransition(
-                    opacity: animation,
-                    child: SlideTransition(
-                      position: Tween<Offset>(
-                        begin: const Offset(0, 0.025),
-                        end: Offset.zero,
-                      ).animate(animation),
-                      child: child,
+    return PopScope(
+      canPop: index == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop && index != 0) select(0);
+      },
+      child: Scaffold(
+        backgroundColor: Harvest.colors(context).cream,
+        body: SafeArea(
+          bottom: false,
+          child: Column(
+            children: [
+              if (store.isDemo)
+                Material(
+                  color: Harvest.colors(context).paleLeaf,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 4,
                     ),
-                  );
-                },
-                child: KeyedSubtree(
-                  key: ValueKey<int>(index),
-                  child: pages[index] ?? page(index),
+                    child: Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Demo · Browse the live catalog',
+                            style: TextStyle(fontSize: 12),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: store.requestSignIn,
+                          child: const Text('Sign in'),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              if ((store.live || store.isDemo) &&
+                  (store.loading || store.error != null || store.hasMore))
+                const DataStatusBar(),
+              Expanded(
+                child: AnimatedSwitcher(
+                  duration: MediaQuery.disableAnimationsOf(context)
+                      ? Duration.zero
+                      : const Duration(milliseconds: 280),
+                  switchInCurve: Curves.easeOutCubic,
+                  switchOutCurve: Curves.easeInCubic,
+                  transitionBuilder: (child, animation) {
+                    return FadeTransition(
+                      opacity: animation,
+                      child: SlideTransition(
+                        position: Tween<Offset>(
+                          begin: const Offset(0, 0.025),
+                          end: Offset.zero,
+                        ).animate(animation),
+                        child: child,
+                      ),
+                    );
+                  },
+                  child: KeyedSubtree(
+                    key: ValueKey<int>(index),
+                    child: pages[index] ?? page(index),
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-      // Floating HarvestHub dock with a measured, animated active capsule.
-      bottomNavigationBar: Container(
-        color: Colors.transparent,
-        child: SafeArea(
-          top: false,
-          child: Container(
-            margin: const EdgeInsets.fromLTRB(14, 4, 14, 8),
-            height: 68,
-            decoration: BoxDecoration(
-              color: Theme.of(context).brightness == Brightness.dark
-                  ? const Color(0xFF10281B)
-                  : const Color(0xFF123522),
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-              boxShadow: [
-                BoxShadow(
-                  color: const Color(0xFF07170E).withValues(
-                    alpha: Theme.of(context).brightness == Brightness.dark
-                        ? 0.52
-                        : 0.24,
+        // Floating HarvestHub dock with a measured, animated active capsule.
+        bottomNavigationBar: Container(
+          color: Colors.transparent,
+          child: SafeArea(
+            top: false,
+            child: Container(
+              margin: const EdgeInsets.fromLTRB(14, 4, 14, 8),
+              height: 68,
+              decoration: BoxDecoration(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? const Color(0xFF10281B)
+                    : const Color(0xFF123522),
+                borderRadius: BorderRadius.circular(28),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color(0xFF07170E).withValues(
+                      alpha: Theme.of(context).brightness == Brightness.dark
+                          ? 0.52
+                          : 0.24,
+                    ),
+                    blurRadius: 22,
+                    offset: const Offset(0, 8),
                   ),
-                  blurRadius: 22,
-                  offset: const Offset(0, 8),
-                ),
-              ],
-            ),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final itemWidth = constraints.maxWidth / labels.length;
-                final noMotion = MediaQuery.disableAnimationsOf(context);
-                return Stack(
-                  children: [
-                    AnimatedPositioned(
-                      duration: noMotion
-                          ? Duration.zero
-                          : const Duration(milliseconds: 360),
-                      curve: Curves.easeOutCubic,
-                      left: itemWidth * index + 4,
-                      top: 6,
-                      width: itemWidth - 8,
-                      height: 56,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(22),
-                          gradient: const LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [Color(0xFF2A7850), Color(0xFF1A5738)],
-                          ),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.17),
-                          ),
-                          boxShadow: const [
-                            BoxShadow(
-                              color: Color(0x3325A363),
-                              blurRadius: 14,
-                              offset: Offset(0, 4),
+                ],
+              ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final itemWidth = constraints.maxWidth / labels.length;
+                  final noMotion = MediaQuery.disableAnimationsOf(context);
+                  return Stack(
+                    children: [
+                      AnimatedPositioned(
+                        duration: noMotion
+                            ? Duration.zero
+                            : const Duration(milliseconds: 360),
+                        curve: Curves.easeOutCubic,
+                        left: itemWidth * index + 4,
+                        top: 6,
+                        width: itemWidth - 8,
+                        height: 56,
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(22),
+                            gradient: const LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [Color(0xFF2A7850), Color(0xFF1A5738)],
                             ),
-                          ],
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.17),
+                            ),
+                            boxShadow: const [
+                              BoxShadow(
+                                color: Color(0x3325A363),
+                                blurRadius: 14,
+                                offset: Offset(0, 4),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                    Row(
-                      children: List.generate(labels.length, (i) {
-                        final selected = index == i;
-                        return Expanded(
-                          child: Semantics(
-                            selected: selected,
-                            button: true,
-                            label: labels[i],
-                            child: Material(
-                              color: Colors.transparent,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(24),
-                                onTap: () => select(i),
-                                child: SizedBox(
-                                  height: 68,
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      AnimatedScale(
-                                        scale: selected ? 1.08 : 1,
-                                        duration: noMotion
-                                            ? Duration.zero
-                                            : const Duration(milliseconds: 220),
-                                        curve: Curves.easeOutBack,
-                                        child: Icon(
-                                          icons[i],
-                                          size: 22,
-                                          color: Colors.white.withValues(
-                                            alpha: selected ? 1 : 0.68,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 3),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 11,
-                                        ),
-                                        child: FittedBox(
-                                          fit: BoxFit.scaleDown,
-                                          child: AnimatedDefaultTextStyle(
-                                            duration: noMotion
-                                                ? Duration.zero
-                                                : const Duration(
-                                                    milliseconds: 180,
-                                                  ),
-                                            style: TextStyle(
-                                              fontFamily: 'Manrope',
-                                              fontSize: 10,
-                                              height: 1.1,
-                                              letterSpacing: 0,
-                                              fontWeight: selected
-                                                  ? FontWeight.w800
-                                                  : FontWeight.w600,
-                                              color: Colors.white.withValues(
-                                                alpha: selected ? 1 : 0.72,
-                                              ),
+                      Row(
+                        children: List.generate(labels.length, (i) {
+                          final selected = index == i;
+                          return Expanded(
+                            child: Semantics(
+                              selected: selected,
+                              button: true,
+                              label: labels[i],
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(24),
+                                  onTap: () => select(i),
+                                  child: SizedBox(
+                                    height: 68,
+                                    child: Column(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      children: [
+                                        AnimatedScale(
+                                          scale: selected ? 1.08 : 1,
+                                          duration: noMotion
+                                              ? Duration.zero
+                                              : const Duration(
+                                                  milliseconds: 220,
+                                                ),
+                                          curve: Curves.easeOutBack,
+                                          child: Icon(
+                                            icons[i],
+                                            size: 22,
+                                            color: Colors.white.withValues(
+                                              alpha: selected ? 1 : 0.68,
                                             ),
-                                            child: Text(labels[i]),
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                        const SizedBox(height: 3),
+                                        Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 11,
+                                          ),
+                                          child: FittedBox(
+                                            fit: BoxFit.scaleDown,
+                                            child: AnimatedDefaultTextStyle(
+                                              duration: noMotion
+                                                  ? Duration.zero
+                                                  : const Duration(
+                                                      milliseconds: 180,
+                                                    ),
+                                              style: TextStyle(
+                                                fontFamily: 'Manrope',
+                                                fontSize: 10,
+                                                height: 1.1,
+                                                letterSpacing: 0,
+                                                fontWeight: selected
+                                                    ? FontWeight.w800
+                                                    : FontWeight.w600,
+                                                color: Colors.white.withValues(
+                                                  alpha: selected ? 1 : 0.72,
+                                                ),
+                                              ),
+                                              child: Text(labels[i]),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
                             ),
-                          ),
-                        );
-                      }),
-                    ),
-                  ],
-                );
-              },
+                          );
+                        }),
+                      ),
+                    ],
+                  );
+                },
+              ),
             ),
           ),
         ),

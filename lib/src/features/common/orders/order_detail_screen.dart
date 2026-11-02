@@ -146,7 +146,10 @@ class OrderDetailScreen extends StatelessWidget {
     final order =
         store.orders.where((o) => o.id == this.order.id).firstOrNull ??
         this.order;
-    final canUpdate = store.role != UserRole.customer && order.status.active;
+    final canUpdate =
+        store.role != UserRole.customer &&
+        order.approvalStatus == 'approved' &&
+        order.status.active;
     final timeline = OrderStatus.values
         .where((s) => s != OrderStatus.cancelled)
         .toList();
@@ -163,7 +166,11 @@ class OrderDetailScreen extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(20, 10, 20, 100),
         children: [
           PageHeading(
-            order.status == OrderStatus.completed
+            order.approvalStatus == 'pending'
+                ? 'Awaiting Admin Approval'
+                : order.approvalStatus == 'rejected'
+                ? 'Order Not Approved'
+                : order.status == OrderStatus.completed
                 ? 'Harvest Delivered'
                 : order.status == OrderStatus.cancelled
                 ? 'Order Cancelled'

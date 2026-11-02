@@ -27,6 +27,8 @@ service cloud.firestore {
       return shortText(p.name,500) && p.name.size()>0 && shortText(p.description,5000)
         && shortText(p.unit,60) && p.unit.size()>0 && p.price is int && p.price>=0 && p.price<=1000000000
         && p.stock is int && p.stock>=0 && p.stock<=1000000000 && p.archived is bool
+        && (p.get('initialStock',p.stock) is int && p.get('initialStock',p.stock)>=p.stock
+          && p.get('initialStock',p.stock)<=1000000000)
         && shortText(p.image,140000) && p.updatedAt==request.time
         && getAfter(/databases/$(database)/documents/categories/$(p.categoryId)).data.name==p.category;
     }
@@ -34,42 +36,48 @@ service cloud.firestore {
       let before=resource.data;
       let after=request.resource.data;
       let order=getAfter(/databases/$(database)/documents/orders/$(after.lastOrderId)).data;
-      return active() && profile().role=='customer' && before.archived==false
+      return signedIn() && before.archived==false
         && after.diff(before).affectedKeys().hasOnly(['stock','lastOrderId','updatedAt'])
         && after.updatedAt==request.time && after.stock>=0
         && !exists(/databases/$(database)/documents/orders/$(after.lastOrderId))
-        && order.customerId==request.auth.uid && order.items.size()==1
-        && order.items[0].productId==productId && order.items[0].quantity is int
-        && order.items[0].quantity>0 && after.stock==before.stock-order.items[0].quantity;
+        && order.customerId==request.auth.uid && order.items.size()>0 && order.items.size()<=8
+        && order.quantities.get(productId,0) is int && order.quantities.get(productId,0)>0
+        && after.stock==before.stock-order.quantities[productId];
     }
-    function validOrder(id,o) {
-      let line=o.items[0];
+    function validLine(o,id,i) {
+      let line=o.items[i];
       let p=get(/databases/$(database)/documents/products/$(line.productId)).data;
       let after=getAfter(/databases/$(database)/documents/products/$(line.productId)).data;
-      let farm=get(/databases/$(database)/documents/farms/$(p.farmId)).data;
+      return line.keys().hasOnly(['productId','name','image','unit','price','quantity'])
+        && line.name==p.name && line.image==p.image && line.unit==p.unit && line.price==p.price
+        && line.quantity is int && line.quantity>0 && line.quantity<=p.stock
+        && o.quantities[line.productId]==line.quantity
+        && p.archived==false && p.farmId==o.farmId
+        && after.stock==p.stock-line.quantity && after.lastOrderId==id;
+    }
+    function validOrder(id,o) {
+      let farm=get(/databases/$(database)/documents/farms/$(o.farmId)).data;
       // Contact snapshot is independent of the authenticated account identity.
-      return o.keys().hasOnly(['customerId','customerName','recipientName','farmId','farmerId','farmName','market','items','total','address','phone','note','paymentMethod','status','createdAt'])
+      return o.keys().hasOnly(['customerId','customerName','recipientName','farmId','farmerId','farmName','market','items','quantities','total','address','phone','note','paymentMethod','status','approvalStatus','createdAt'])
         && shortText(o.get('recipientName',o.customerName),500) && o.get('recipientName',o.customerName).size()>0
         && shortText(o.get('phone',''),40) && shortText(o.get('note',''),1000)
         && o.get('paymentMethod','cashOnDelivery')=='cashOnDelivery'
         && o.customerId==request.auth.uid && o.customerName==profile().name
-        && o.status=='pending' && o.createdAt==request.time && shortText(o.address,500) && o.address.size()>0
-        && o.items is list && o.items.size()==1
-        && line.keys().hasOnly(['productId','name','image','unit','price','quantity'])
-        && line.name==p.name && line.image==p.image && line.unit==p.unit && line.price==p.price
-        && line.quantity is int && line.quantity>0 && line.quantity<=p.stock
-        && o.total==p.price*line.quantity && p.archived==false && farm.active==true
-        && o.farmId==p.farmId && o.farmerId==farm.owner && o.farmName==farm.name && o.market==farm.market
-        && after.stock==p.stock-line.quantity && after.lastOrderId==id;
+        && o.status=='pending' && o.approvalStatus=='pending' && o.createdAt==request.time && shortText(o.address,500) && o.address.size()>0
+        && o.items is list && o.items.size()>0 && o.items.size()<=8
+        && o.quantities is map && o.quantities.size()==o.items.size()
+        && validLine(o,id,0)
+        && o.total is int && o.total>=0
+        && farm.active==true && o.farmerId=='' && o.farmName==farm.name && o.market==farm.market;
     }
     match /users/{uid} {
       allow read: if signedIn() && (request.auth.uid == uid || admin());
       allow create: if admin() || (signedIn() && request.auth.uid == uid
-        && request.resource.data.keys().hasAll(['name','email','role','phone','address','active','createdAt'])
-        && request.resource.data.keys().hasOnly(['name','email','role','phone','address','active','createdAt'])
+        && request.resource.data.keys().hasAll(['name','email','role','phone','address','active','approvalStatus','createdAt'])
+        && request.resource.data.keys().hasOnly(['name','email','role','phone','address','active','approvalStatus','createdAt'])
         && request.resource.data.role in ['customer','farmer']
         && request.resource.data.email == request.auth.token.email
-        && request.resource.data.active == true
+        && request.resource.data.active == false && request.resource.data.approvalStatus == 'pending'
         && request.resource.data.createdAt == request.time
         && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 500
         && request.resource.data.phone is string && request.resource.data.phone.size() <= 500
@@ -77,7 +85,7 @@ service cloud.firestore {
         && (request.resource.data.role == 'customer' ||
           getAfter(/databases/$(database)/documents/farms/$(uid)).data.owner == uid));
       allow update: if (admin() && uid != request.auth.uid && resource.data.role != 'admin'
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','address','avatar','active','updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','address','avatar','active','approvalStatus','updatedAt'])
         && (!('name' in request.resource.data) || (shortText(request.resource.data.name,500) && request.resource.data.name.size()>0))
         && (!('phone' in request.resource.data) || shortText(request.resource.data.phone,500))
         && (!('address' in request.resource.data) || shortText(request.resource.data.address,500))
@@ -106,7 +114,14 @@ service cloud.firestore {
         allow update: if active() && request.auth.uid == uid
           && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['readAt'])
           && request.resource.data.readAt == request.time;
-        allow create, delete: if false;
+        allow create: if admin()
+          && request.resource.data.keys().hasOnly(['title','body','createdAt','target','pushDelivered'])
+          && shortText(request.resource.data.title,160)
+          && shortText(request.resource.data.body,1000)
+          && shortText(request.resource.data.get('target',''),200)
+          && request.resource.data.get('pushDelivered',false)==false
+          && request.resource.data.createdAt==request.time;
+        allow delete: if false;
       }
       match /devices/{token} {
         allow read, delete: if signedIn() && request.auth.uid == uid;
@@ -144,7 +159,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(['name','owner','location','market','description','image','active','createdAt'])
         && request.resource.data.owner == id
         && request.resource.data.name == getAfter(/databases/$(database)/documents/users/$(id)).data.name
-        && request.resource.data.active == true && request.resource.data.createdAt == request.time
+        && request.resource.data.active == false && request.resource.data.createdAt == request.time
         && request.resource.data.location == '' && request.resource.data.market == ''
         && request.resource.data.description == '' && request.resource.data.image == '');
       // lat/lng (distance filter) and pickupSlots (pickup availability) added for farmers.
@@ -161,13 +176,16 @@ service cloud.firestore {
       allow delete: if admin();
     }
     match /products/{id} {
-      allow get: if active();
+      // Product creation checks whether the new ID exists inside a transaction.
+      // Farmers also need to read their own pending submissions.
+      allow get: if active() && (resource == null && profile().role in ['farmer', 'admin']
+        || resource != null && (resource.data.archived == false || admin()
+          || (profile().role == 'farmer' && ownsFarm(resource.data.farmId))));
       allow list: if active() && (resource.data.archived==false || admin());
       allow create: if admin() || (ownsFarm(request.resource.data.farmId) && validProduct(request.resource.data)
-        && request.resource.data.createdAt==request.time && request.resource.data.archived==false
-        && categoryCount(request.resource.data.categoryId,1)
-        && getAfter(/databases/$(database)/documents/categories/$(request.resource.data.categoryId)).data.lastProductId==id);
-      allow update: if admin() || stockPurchase(id) || (ownsFarm(resource.data.farmId)
+        && request.resource.data.createdAt==request.time && request.resource.data.archived==true
+        && request.resource.data.approvalStatus=='pending');
+      allow update: if stockPurchase(id) || admin() || (ownsFarm(resource.data.farmId)
         && (admin() || request.resource.data.farmId==resource.data.farmId)
         && request.resource.data.createdAt==resource.data.createdAt
         && productCounts(resource.data,request.resource.data)
@@ -200,8 +218,10 @@ service cloud.firestore {
     match /orders/{id} {
       allow read: if active() && (admin() || resource.data.customerId == request.auth.uid ||
         (profile().role == 'farmer' && resource.data.farmerId == request.auth.uid));
-      allow create: if admin() || (active() && profile().role=='customer' && validOrder(id,request.resource.data));
+      allow create: if (active() && profile().role=='customer' && validOrder(id,request.resource.data)) || admin();
       allow update: if admin() || (ownsFarm(resource.data.farmId)
+        && resource.data.farmerId == request.auth.uid
+        && resource.data.get('approvalStatus','approved') == 'approved'
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt'])
         && request.resource.data.updatedAt==request.time
         && resource.data.status in ['pending','confirmed','ready']
@@ -216,7 +236,7 @@ service cloud.firestore {
       allow create: if active() && profile().role=='customer' && id.matches(request.auth.uid+'_.*')
         && request.resource.data.keys().hasOnly(['userId','orderIds','createdAt'])
         && request.resource.data.userId==request.auth.uid && request.resource.data.createdAt==request.time
-        && request.resource.data.orderIds is list && request.resource.data.orderIds.size()<=3;
+        && request.resource.data.orderIds is list && request.resource.data.orderIds.size()>0;
     }
     // Public administrator contact details shown on Contact Us.
     match /appConfig/{id} { allow read: if true; allow write: if admin(); }
@@ -231,15 +251,34 @@ service cloud.firestore {
         && shortText(request.resource.data.message,5000) && request.resource.data.message.size()>0
         && request.resource.data.createdAt==request.time && request.resource.data.read==false;
     }
+    match /farmerFeedback/{id} {
+      allow read: if admin() || (active() && profile().role=='farmer'
+        && resource.data.farmId==request.auth.uid);
+      allow create: if active() && profile().role=='customer'
+        && request.resource.data.keys().hasOnly(['farmId','customerId','name','email','message','createdAt'])
+        && request.resource.data.customerId==request.auth.uid
+        && request.resource.data.email==profile().email
+        && shortText(request.resource.data.name,500) && request.resource.data.name.size()>0
+        && shortText(request.resource.data.message,5000) && request.resource.data.message.size()>0
+        && get(/databases/$(database)/documents/farms/$(request.resource.data.farmId)).data.active==true
+        && request.resource.data.createdAt==request.time;
+    }
     match /farmersMarkets/{id} {
       allow read: if active();
-      allow create, update: if admin()
-        && request.resource.data.keys().hasOnly(['name','location','hours','lat','lng','active','updatedAt'])
+      allow create: if (admin() || (active() && profile().role=='farmer'
+          && request.resource.data.owner==request.auth.uid
+          && request.resource.data.approvalStatus=='pending'
+          && request.resource.data.active==false))
+        && validMarket();
+      allow update: if admin() && validMarket();
+      function validMarket() {
+        return request.resource.data.keys().hasOnly(['name','location','hours','lat','lng','active','updatedAt','owner','approvalStatus'])
         && shortText(request.resource.data.name,500) && request.resource.data.name.size()>0
         && shortText(request.resource.data.location,500) && shortText(request.resource.data.hours,1000)
         && request.resource.data.lat is number && request.resource.data.lat>=-90 && request.resource.data.lat<=90
         && request.resource.data.lng is number && request.resource.data.lng>=-180 && request.resource.data.lng<=180
         && request.resource.data.active is bool && request.resource.data.updatedAt==request.time;
+      }
       allow delete: if admin();
     }
     match /{document=**} { allow read, write: if false; }

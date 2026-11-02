@@ -11,9 +11,29 @@ class ProductScreen extends StatefulWidget {
 
 class _ProductScreenState extends State<ProductScreen> {
   int _quantity = 1;
+  final TextEditingController _quantityInput = TextEditingController(text: '1');
+  final PageController _relatedController = PageController(
+    viewportFraction: .42,
+  );
   int _selectedThumbnail = 0;
   bool _isDescriptionExpanded = false;
   String? _selectedOfferId;
+
+  @override
+  void dispose() {
+    _quantityInput.dispose();
+    _relatedController.dispose();
+    super.dispose();
+  }
+
+  void _setQuantity(int value, int stock) {
+    final next = value.clamp(1, stock > 0 ? stock : 1);
+    setState(() => _quantity = next);
+    _quantityInput.value = TextEditingValue(
+      text: '$next',
+      selection: TextSelection.collapsed(offset: '$next'.length),
+    );
+  }
 
   Widget _trustBadge(
     BuildContext context, {
@@ -124,15 +144,21 @@ class _ProductScreenState extends State<ProductScreen> {
     final farm = store.farm(p.farmId);
     final offers = store.offersFor(p);
     final isSaved = store.saved.contains(p.id);
-    final relatedProducts = store.visibleProducts
-        .where((item) => store.catalogKey(item) != store.catalogKey(p))
-        .take(4)
-        .toList();
+    final relatedProducts =
+        store.visibleProducts
+            .where((item) => store.catalogKey(item) != store.catalogKey(p))
+            .toList()
+          ..sort((a, b) {
+            final aRelated = a.category == p.category ? 0 : 1;
+            final bRelated = b.category == p.category ? 0 : 1;
+            return aRelated.compareTo(bRelated);
+          });
+    final selectedQuantity = _quantity > p.stock ? p.stock : _quantity;
 
     final thumbnails = [p.displayImage];
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FAF8),
+      backgroundColor: Harvest.colors(context).canvas,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -343,6 +369,7 @@ class _ProductScreenState extends State<ProductScreen> {
                     onChanged: (id) => setState(() {
                       _selectedOfferId = id;
                       _quantity = 1;
+                      _quantityInput.text = '1';
                     }),
                   ),
                 ],
@@ -420,18 +447,42 @@ class _ProductScreenState extends State<ProductScreen> {
                               minHeight: 30,
                             ),
                             icon: const Icon(Icons.remove, size: 16),
-                            onPressed: _quantity > 1
-                                ? () => setState(() => _quantity--)
+                            onPressed: selectedQuantity > 1
+                                ? () => _setQuantity(
+                                    selectedQuantity - 1,
+                                    p.stock,
+                                  )
                                 : null,
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
-                            child: Text(
-                              '$_quantity',
-                              style: const TextStyle(
-                                fontFamily: 'Manrope',
-                                fontSize: 13,
-                                fontWeight: FontWeight.w800,
+                          SizedBox(
+                            width: 48,
+                            child: TextField(
+                              controller: _quantityInput,
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              textAlign: TextAlign.center,
+                              decoration: const InputDecoration(
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  vertical: 6,
+                                ),
+                                border: InputBorder.none,
+                              ),
+                              onChanged: (value) {
+                                final number = int.tryParse(value);
+                                if (number != null &&
+                                    number > 0 &&
+                                    number <= p.stock) {
+                                  setState(() => _quantity = number);
+                                } else if (number != null && number > p.stock) {
+                                  _setQuantity(number, p.stock);
+                                }
+                              },
+                              onSubmitted: (value) => _setQuantity(
+                                int.tryParse(value) ?? 1,
+                                p.stock,
                               ),
                             ),
                           ),
@@ -443,8 +494,11 @@ class _ProductScreenState extends State<ProductScreen> {
                               minHeight: 30,
                             ),
                             icon: const Icon(Icons.add, size: 16),
-                            onPressed: _quantity < (p.stock > 0 ? p.stock : 1)
-                                ? () => setState(() => _quantity++)
+                            onPressed: selectedQuantity < p.stock
+                                ? () => _setQuantity(
+                                    selectedQuantity + 1,
+                                    p.stock,
+                                  )
                                 : null,
                           ),
                         ],
@@ -461,24 +515,45 @@ class _ProductScreenState extends State<ProductScreen> {
                       width: 8,
                       height: 8,
                       decoration: BoxDecoration(
-                        color: p.stock > 0
-                            ? const Color(0xFF16A34A)
-                            : const Color(0xFFDC2626),
+                        color:
+                            (p.stock - selectedQuantity) * 5 <
+                                (p.initialStock > 0 ? p.initialStock : p.stock)
+                            ? const Color(0xFFDC2626)
+                            : (p.stock - selectedQuantity) * 5 <
+                                  2 *
+                                      (p.initialStock > 0
+                                          ? p.initialStock
+                                          : p.stock)
+                            ? const Color(0xFFF59E0B)
+                            : const Color(0xFF16A34A),
                         shape: BoxShape.circle,
                       ),
                     ),
                     const SizedBox(width: 6),
-                    Text(
-                      p.stock > 0
-                          ? 'In Stock · ${p.stock} ${p.unit} available'
-                          : 'Out of stock',
-                      style: TextStyle(
-                        fontFamily: 'Manrope',
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: p.stock > 0
-                            ? const Color(0xFF16A34A)
-                            : const Color(0xFFDC2626),
+                    Expanded(
+                      child: Text(
+                        p.stock > 0
+                            ? 'In Stock · ${p.stock - selectedQuantity} remaining after selection'
+                            : 'Out of stock',
+                        maxLines: 2,
+                        style: TextStyle(
+                          fontFamily: 'Manrope',
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color:
+                              (p.stock - selectedQuantity) * 5 <
+                                  (p.initialStock > 0
+                                      ? p.initialStock
+                                      : p.stock)
+                              ? const Color(0xFFDC2626)
+                              : (p.stock - selectedQuantity) * 5 <
+                                    2 *
+                                        (p.initialStock > 0
+                                            ? p.initialStock
+                                            : p.stock)
+                              ? const Color(0xFFF59E0B)
+                              : const Color(0xFF16A34A),
+                        ),
                       ),
                     ),
                   ],
@@ -727,43 +802,65 @@ class _ProductScreenState extends State<ProductScreen> {
                 const SizedBox(height: 22),
 
                 // Related Products Strip
-                Text(
-                  'Related Products',
-                  style: TextStyle(
-                    fontFamily: 'Manrope',
-                    fontSize: 15,
-                    fontWeight: FontWeight.w800,
-                    color: Harvest.colors(context).ink,
+                if (relatedProducts.isNotEmpty)
+                  Text(
+                    'Related Products',
+                    style: TextStyle(
+                      fontFamily: 'Manrope',
+                      fontSize: 15,
+                      fontWeight: FontWeight.w800,
+                      color: Harvest.colors(context).ink,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  physics: const BouncingScrollPhysics(),
-                  child: Row(
-                    children: [
-                      for (final rel in relatedProducts)
-                        Padding(
+                if (relatedProducts.isNotEmpty) const SizedBox(height: 12),
+                if (relatedProducts.isNotEmpty)
+                  SizedBox(
+                    height: 180,
+                    child: PageView.builder(
+                      controller: _relatedController,
+                      itemCount: relatedProducts.length,
+                      padEnds: false,
+                      itemBuilder: (context, index) {
+                        final rel = relatedProducts[index];
+                        return Padding(
                           padding: const EdgeInsets.only(right: 12),
                           child: InkWell(
                             borderRadius: BorderRadius.circular(16),
                             onTap: () =>
-                                openPage(context, ProductScreen(product: rel)),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Photo(
-                                rel.displayImage,
-                                bytes: rel.photo,
-                                width: 70,
-                                height: 70,
-                                radius: 16,
-                              ),
+                                openPage1(context, ProductScreen(product: rel)),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Photo(
+                                  rel.displayImage,
+                                  bytes: rel.photo,
+                                  width: double.infinity,
+                                  height: 88,
+                                  radius: 16,
+                                ),
+                                const SizedBox(height: 5),
+                                Text(
+                                  rel.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                Text(
+                                  money(rel.price),
+                                  style: TextStyle(
+                                    color: Harvest.colors(context).muted,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ),
-                    ],
+                        );
+                      },
+                    ),
                   ),
-                ),
               ],
             ),
           ),
@@ -787,6 +884,14 @@ class _ProductScreenState extends State<ProductScreen> {
                   onPressed: p.stock == 0
                       ? null
                       : () {
+                          if (int.tryParse(_quantityInput.text) == null) {
+                            notice(
+                              context,
+                              'Enter a quantity first.',
+                              isError: true,
+                            );
+                            return;
+                          }
                           if (store.isDemo) {
                             requireGuestSignIn(context, addingToCart: true);
                             return;
@@ -794,14 +899,15 @@ class _ProductScreenState extends State<ProductScreen> {
                           final current = store.basket[p.id] ?? 0;
                           final err = store.setQuantity(
                             p.id,
-                            current + _quantity,
+                            current + selectedQuantity,
                           );
                           if (err == null) {
                             HapticFeedback.mediumImpact();
                             notice(
                               context,
-                              'Added ${_quantity}x ${p.name} to basket',
+                              'Added ${selectedQuantity}x ${p.name} to basket',
                             );
+                            Navigator.pop(context);
                           } else {
                             notice(context, err, isError: true);
                           }

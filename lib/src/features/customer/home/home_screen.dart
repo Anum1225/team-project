@@ -43,6 +43,11 @@ class _HomeScreenState extends State<HomeScreen> {
           ..sort(
             (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
           );
+    final upcoming = store.catalogProducts(
+      store.products.where(
+        (product) => product.stock == 0 && store.farm(product.farmId).active,
+      ),
+    )..sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     final address = store.account.address.trim();
     final featuredFarms = store.farms.where((f) => f.active).take(4).toList();
 
@@ -101,6 +106,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   hint: 'Search your local market',
                   readOnly: true,
                   onTap: widget.onExplore,
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 8,
+                ),
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => openPage(context, const WishlistScreen()),
+                    icon: const Icon(Icons.favorite_border_rounded),
+                    label: const Text('My Wishlist'),
+                  ),
                 ),
               ),
               const SizedBox(height: 16),
@@ -203,6 +222,27 @@ class _HomeScreenState extends State<HomeScreen> {
                         openPage(context, ProductScreen(product: product)),
                   ),
                 ),
+              if (upcoming.isNotEmpty) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
+                  child: Text(
+                    'Upcoming products',
+                    style: TextStyle(
+                      color: palette.ink,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
+                  child: ProductGrid(
+                    products: upcoming.take(4).toList(),
+                    onOpen: (product) =>
+                        openPage(context, ProductScreen(product: product)),
+                  ),
+                ),
+              ],
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 22, 20, 10),
                 child: Row(

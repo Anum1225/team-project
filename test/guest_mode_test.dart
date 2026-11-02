@@ -105,7 +105,7 @@ void main() {
     store.dispose();
   });
   testWidgets(
-    'catalog card and wishlist require sign-in without changing guest basket',
+    'catalog card opens details and wishlist requires sign-in without changing guest basket',
     (tester) async {
       tester.view.physicalSize = const Size(393, 873);
       tester.view.devicePixelRatio = 1;
@@ -118,9 +118,10 @@ void main() {
       );
       await guest.refresh();
       guest.toggleSaved('tomato');
+      var detailsOpened = 0;
       for (final screen in [
         Scaffold(
-          body: ProductGrid(products: guest.products, onOpen: (_) {}),
+          body: ProductGrid(products: guest.products, onOpen: (_) => detailsOpened++),
         ),
         const WishlistScreen(),
       ]) {
@@ -133,13 +134,18 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Add to cart').first);
         await tester.pumpAndSettle();
+        if (screen is Scaffold) {
+          expect(detailsOpened, 1);
+          expect(guest.basket, isEmpty);
+          continue;
+        }
         expect(find.text('Sign in to add to cart'), findsOneWidget);
         expect(guest.basket, isEmpty);
         await tester.tap(find.text('Sign in / Create account'));
         await tester.pumpAndSettle();
         expect(guest.basket, isEmpty);
       }
-      expect(signIns, 2);
+      expect(signIns, 1);
       await tester.pumpWidget(const SizedBox.shrink());
       guest.dispose();
     },

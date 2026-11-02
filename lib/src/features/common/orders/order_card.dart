@@ -20,13 +20,17 @@ class OrderCard extends StatelessWidget {
       OrderStatus.cancelled => const Color(0xFFEF4444),
     };
 
-    final statusLabel = switch (order.status) {
-      OrderStatus.completed => 'Completed',
-      OrderStatus.pending => 'Pending',
-      OrderStatus.ready => 'Ready for pickup',
-      OrderStatus.confirmed => 'Confirmed',
-      OrderStatus.cancelled => 'Cancelled',
-    };
+    final statusLabel = order.approvalStatus == 'pending'
+        ? 'Awaiting admin approval'
+        : order.approvalStatus == 'rejected'
+        ? 'Rejected by admin'
+        : switch (order.status) {
+            OrderStatus.completed => 'Completed',
+            OrderStatus.pending => 'Pending',
+            OrderStatus.ready => 'Ready for pickup',
+            OrderStatus.confirmed => 'Confirmed',
+            OrderStatus.cancelled => 'Cancelled',
+          };
 
     final orderNum = isCustomer && order.id.length > 8
         ? '#${order.id.substring(order.id.length - 8).toUpperCase()}'
