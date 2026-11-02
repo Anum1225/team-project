@@ -1,0 +1,257 @@
+{
+  "root": "E:\\techwiz_project\\team-project",
+  "apk": {
+    "path": "C:\\Users\\pc\\Downloads\\base.apk",
+    "sha256": "2897e9e0750b1638bcd4d07cd41e1a3611990258a21b405bc97d69ac75b1250b",
+    "packaged_assets": [
+      "assets/fonts/DMSerifDisplay-Regular.ttf",
+      "assets/fonts/Fraunces.ttf",
+      "assets/fonts/Manrope.ttf",
+      "assets/fonts/Outfit.ttf",
+      "assets/images/ai_farm_robot.jpg",
+      "assets/images/app_icon.jpg",
+      "assets/images/app_icon_foreground.jpg",
+      "assets/images/app_logo.jpg",
+      "assets/images/app_logo.png",
+      "assets/images/apples.jpg",
+      "assets/images/carrots.jpg",
+      "assets/images/corn.jpg",
+      "assets/images/eggs.jpg",
+      "assets/images/farm.jpg",
+      "assets/images/farm_hero_banner.jpg",
+      "assets/images/farm_produce_crate.jpg",
+      "assets/images/farmer_holding_crate.jpg",
+      "assets/images/farmer_marcus.jpg",
+      "assets/images/farmer_sunny.jpg",
+      "assets/images/harvest_sprout.svg",
+      "assets/images/honey.jpg",
+      "assets/images/market.jpg",
+      "assets/images/p_apple.jpg",
+      "assets/images/p_avocado.jpg",
+      "assets/images/p_banana.jpg",
+      "assets/images/p_basil.jpg",
+      "assets/images/p_butter.jpg",
+      "assets/images/p_carrot.jpg",
+      "assets/images/p_chickpea.jpg",
+      "assets/images/p_coriander.jpg",
+      "assets/images/p_corn.jpg",
+      "assets/images/p_cucumber.jpg",
+      "assets/images/p_kidneybean.jpg",
+      "assets/images/p_lentil.jpg",
+      "assets/images/p_milk.jpg",
+      "assets/images/p_mint.jpg",
+      "assets/images/p_mung.jpg",
+      "assets/images/p_oats.jpg",
+      "assets/images/p_paneer.jpg",
+      "assets/images/p_potato.jpg",
+      "assets/images/p_rice.jpg",
+      "assets/images/p_rosemary.jpg",
+      "assets/images/p_strawberry.jpg",
+      "assets/images/p_tomato.jpg",
+      "assets/images/p_wheat.jpg",
+      "assets/images/p_yogurt.jpg",
+      "assets/images/peaches.jpg",
+      "assets/images/pears.jpg",
+      "assets/images/potatoes.jpg",
+      "assets/images/spinach.jpg",
+      "assets/images/strawberries.jpg",
+      "assets/images/tomatoes.jpg"
+    ]
+  },
+  "inventory": {
+    ".dart_tool": {
+      "files": 722,
+      "bytes": 1238952228
+    },
+    ".firebase": {
+      "files": 2,
+      "bytes": 189600130
+    },
+    ".firebaserc": {
+      "files": 1,
+      "bytes": 90
+    },
+    ".flutter-plugins-dependencies": {
+      "files": 1,
+      "bytes": 21067
+    },
+    ".git": {
+      "files": 1762,
+      "bytes": 50226614
+    },
+    ".gitignore": {
+      "files": 1,
+      "bytes": 1003
+    },
+    ".idea": {
+      "files": 13,
+      "bytes": 194373
+    },
+    ".local-backups": {
+      "files": 66,
+      "bytes": 1140513
+    },
+    ".metadata": {
+      "files": 1,
+      "bytes": 1706
+    },
+    "analysis_options.yaml": {
+      "files": 1,
+      "bytes": 1585
+    },
+    "android": {
+      "files": 56,
+      "bytes": 40190285
+    },
+    "assets": {
+      "files": 59,
+      "bytes": 38524306
+    },
+    "build": {
+      "files": 12268,
+      "bytes": 2794627377
+    },
+    "config": {
+      "files": 4,
+      "bytes": 22525
+    },
+    "docs": {
+      "files": 78,
+      "bytes": 3747812
+    },
+    "firebase-debug.log": {
+      "files": 1,
+      "bytes": 28739
+    },
+    "firebase.json": {
+      "files": 1,
+      "bytes": 1326
+    },
+    "firestore-debug.log": {
+      "files": 1,
+      "bytes": 216671
+    },
+    "functions": {
+      "files": 13103,
+      "bytes": 144102605
+    },
+    "hs_err_pid8892.log": {
+      "files": 1,
+      "bytes": 51973
+    },
+    "ios": {
+      "files": 55,
+      "bytes": 852094
+    },
+    "lib": {
+      "files": 155,
+      "bytes": 1444757
+    },
+    "linux": {
+      "files": 10,
+      "bytes": 16864
+    },
+    "macos": {
+      "files": 33,
+      "bytes": 230843
+    },
+    "pubspec.lock": {
+      "files": 1,
+      "bytes": 36394
+    },
+    "pubspec.yaml": {
+      "files": 1,
+      "bytes": 5089
+    },
+    "README.md": {
+      "files": 1,
+      "bytes": 6124
+    },
+    "replay_pid8892.log": {
+      "files": 1,
+      "bytes": 381946
+    },
+    "scripts": {
+      "files": 5,
+      "bytes": 21172
+    },
+    "test": {
+      "files": 23,
+      "bytes": 93489
+    },
+    "untitled.iml": {
+      "files": 1,
+      "bytes": 15241
+    },
+    "web": {
+      "files": 7,
+      "bytes": 43666
+    },
+    "windows": {
+      "files": 19,
+      "bytes": 72158
+    }
+  },
+  "reachable_dart_files": 96,
+  "not_reached_from_main": [
+    "lib/generated/assets.dart",
+    "lib/legacy/hashir_work/app.dart",
+    "lib/legacy/hashir_work/assistant.dart",
+    "lib/legacy/hashir_work/auth.dart",
+    "lib/legacy/hashir_work/components.dart",
+    "lib/legacy/hashir_work/customer.dart",
+    "lib/legacy/hashir_work/firebase_collections.dart",
+    "lib/legacy/hashir_work/firebase_store.dart",
+    "lib/legacy/hashir_work/guest_store.dart",
+    "lib/legacy/hashir_work/location.dart",
+    "lib/legacy/hashir_work/models.dart",
+    "lib/legacy/hashir_work/operations.dart",
+    "lib/legacy/hashir_work/orders.dart",
+    "lib/legacy/hashir_work/preview_store.dart",
+    "lib/legacy/hashir_work/profile.dart",
+    "lib/legacy/hashir_work/reporting.dart",
+    "lib/legacy/hashir_work/store.dart",
+    "lib/legacy/hashir_work/theme.dart",
+    "lib/legacy/hashir_work/customer_screens/following_screen.dart",
+    "lib/legacy/hashir_work/customer_screens/notifications_screen.dart",
+    "lib/legacy/hashir_work/customer_screens/pickup_screen.dart",
+    "lib/legacy/hashir_work/customer_screens/sign_in_required.dart",
+    "lib/legacy/hashir_work/customer_forms/screens/auth_screen.dart",
+    "lib/legacy/hashir_work/customer_forms/screens/password_help_screen.dart",
+    "lib/legacy/hashir_work/customer_forms/screens/register_screen.dart",
+    "lib/legacy/hashir_work/customer_forms/theme/customer_theme.dart",
+    "lib/legacy/hashir_work/customer_forms/validation/customer_validators.dart",
+    "lib/legacy/hashir_work/customer_forms/validation/validate_customer_form.dart",
+    "lib/legacy/hashir_work/customer_forms/widgets/auth_form_frame.dart",
+    "lib/legacy/hashir_work/customer_forms/widgets/customer_form.dart",
+    "lib/legacy/hashir_work/customer_forms/widgets/customer_text_field.dart",
+    "lib/legacy/hashir_work/customer_forms/widgets/heading.dart",
+    "lib/legacy/hashir_work/customer_forms/widgets/page_frame.dart",
+    "lib/legacy/hashir_work/customer_forms/widgets/password_field.dart",
+    "lib/legacy/hashir_work/customer_forms/widgets/surface.dart",
+    "lib/legacy/hashir_work/demo_catalog/data/sample_catalog.dart",
+    "lib/legacy/hashir_work/demo_catalog/models/farmer.dart",
+    "lib/legacy/hashir_work/demo_catalog/models/product.dart",
+    "lib/legacy/hashir_work/demo_catalog/widgets/produce_illustration.dart",
+    "lib/legacy/hashir_work/demo_catalog/widgets/product_art.dart",
+    "lib/src/features/admin/customers/customers.dart",
+    "lib/src/features/admin/farmers/farmers.dart",
+    "lib/src/features/admin/orders/orders.dart",
+    "lib/src/features/admin/products/products.dart",
+    "lib/src/features/authentication/admin_login/admin_login.dart",
+    "lib/src/features/authentication/customer_login_register/customer_auth.dart",
+    "lib/src/features/authentication/farmer_login/farmer_login.dart",
+    "lib/src/features/authentication/two_step_verification/firebase_email_verification.dart",
+    "lib/src/features/customer/categories/categories.dart",
+    "lib/src/features/customer/orders/orders.dart",
+    "lib/src/features/customer/profile/profile.dart",
+    "lib/src/features/farmer/add_product/add_product.dart",
+    "lib/src/features/farmer/edit_delete_product/edit_delete_product.dart",
+    "lib/src/features/farmer/inventory/inventory.dart",
+    "lib/src/features/farmer/orders/orders.dart",
+    "lib/src/features/farmer/order_status/order_status.dart",
+    "lib/src/features/farmer/products/products.dart",
+    "lib/src/features/farmer/profile/profile.dart"
+  ],
+  "deleted": false
+}

@@ -1,0 +1,268 @@
+{
+  "date": "2026-09-27",
+  "release": "1.0.16",
+  "removed": [
+    {
+      "path": "lib/legacy/hashir_work/app.dart",
+      "bytes": 52491,
+      "sha256": "CE76767308DA83EAA5CFC2D618FE121CAB615F0F7078974626D018E47C9552F2"
+    },
+    {
+      "path": "lib/legacy/hashir_work/assistant.dart",
+      "bytes": 27807,
+      "sha256": "454E48CFA55A5E8F7C5534C6CD478BA8270FA007C40F7B482F48FF39BD43A412"
+    },
+    {
+      "path": "lib/legacy/hashir_work/auth.dart",
+      "bytes": 1574,
+      "sha256": "44D5999C4647E753CD1D702704BC293F8F3598A6609A331A87F6A004AB66DBBB"
+    },
+    {
+      "path": "lib/legacy/hashir_work/components.dart",
+      "bytes": 65382,
+      "sha256": "93DB454F734E4F4E28767475C35888EE644599C7F0B505CE605074EC686FC373"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer.dart",
+      "bytes": 134326,
+      "sha256": "E3D0F9FDE46521E9BD8E4F8FAB7807C5BE735DD22E68E875DA0CADF4CB7FA29E"
+    },
+    {
+      "path": "lib/legacy/hashir_work/firebase_collections.dart",
+      "bytes": 2170,
+      "sha256": "05B111CBB22E198460191D2113F62615DA5B50EA8CA9C90DA5ADC6B2A3DB0437"
+    },
+    {
+      "path": "lib/legacy/hashir_work/firebase_store.dart",
+      "bytes": 36137,
+      "sha256": "C1762952A1FE12F7B10F5D5E905931EA2E45140B577FBB0D45F090536F056040"
+    },
+    {
+      "path": "lib/legacy/hashir_work/guest_store.dart",
+      "bytes": 3046,
+      "sha256": "9A62529F3E87A2E81616C5CCA448BF51F8786FE85EE1A72E9FC769BE5053ED78"
+    },
+    {
+      "path": "lib/legacy/hashir_work/location.dart",
+      "bytes": 1181,
+      "sha256": "69B1A83C4B51F2C70D3C8D2D0BCB37E18EA524F892C22205A0E5D92C9BCB5642"
+    },
+    {
+      "path": "lib/legacy/hashir_work/models.dart",
+      "bytes": 6718,
+      "sha256": "F2001751FDE9AA09CF44F99722CD0D3B2F11DC62B9B0F1E2D0DB1C24D0935FC1"
+    },
+    {
+      "path": "lib/legacy/hashir_work/operations.dart",
+      "bytes": 48809,
+      "sha256": "D4C352CAE69F5FBF560C5CB2469516B9DF9BB08906CBAFFC208CA33AE660FDA6"
+    },
+    {
+      "path": "lib/legacy/hashir_work/orders.dart",
+      "bytes": 23760,
+      "sha256": "1B79074652A41D7DAFC74B805C9F3311D489390B77328D5F8C44FA6CF6D9A97A"
+    },
+    {
+      "path": "lib/legacy/hashir_work/preview_store.dart",
+      "bytes": 5606,
+      "sha256": "4BBB4F4E23D00BBF5BA017EB3B9063F226E3E0C9CA868B1AA9A3C9C43A5819D3"
+    },
+    {
+      "path": "lib/legacy/hashir_work/profile.dart",
+      "bytes": 29060,
+      "sha256": "ECBE847C40C5D128CB3B480464E47AB367F2728B6F4CB59747F04320F21A7ED2"
+    },
+    {
+      "path": "lib/legacy/hashir_work/reporting.dart",
+      "bytes": 10621,
+      "sha256": "7C6E3A5F7F90EFB2F33D29749C0730FD8D62D53227712BD27C061531CF0DAC84"
+    },
+    {
+      "path": "lib/legacy/hashir_work/store.dart",
+      "bytes": 13289,
+      "sha256": "C2A521303F657D13CAF31C74BDF493A540DCC6B39A3A3BD7303DDD9BF0DE3348"
+    },
+    {
+      "path": "lib/legacy/hashir_work/theme.dart",
+      "bytes": 19220,
+      "sha256": "EDDB2D5F42E61801058D4B44FEF49926B3FD894CD88950AABCEAED990D7FC3A8"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/screens/auth_screen.dart",
+      "bytes": 2905,
+      "sha256": "67563EDD928841F3426F52A4BCB56A21FF977EA48A974CE66688280510A2CB1B"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/screens/password_help_screen.dart",
+      "bytes": 1576,
+      "sha256": "B3F79319D40ED8CABC9C26351659679668C148B5D167DEACC459A3C1E5B0EF84"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/screens/register_screen.dart",
+      "bytes": 3315,
+      "sha256": "966BD62061CA73420596222852FB15EC81C16DFDCB1611BEB95693EDB216D5E9"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/theme/customer_theme.dart",
+      "bytes": 1989,
+      "sha256": "735C78FD8D4CDBA404B581DE089F004365ECD04861C4AA7CAC4BEAED7263F7AF"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/validation/customer_validators.dart",
+      "bytes": 3915,
+      "sha256": "BFACF12187E31421DA9ECEDC003C939335B3C66D52CFCAC37DA4E6198B7F0817"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/validation/validate_customer_form.dart",
+      "bytes": 700,
+      "sha256": "4F5C71364726A1C605FD8E5868FE247323C63BEE214B5F07B549FA8A140FB62E"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/widgets/auth_form_frame.dart",
+      "bytes": 1487,
+      "sha256": "D7E4EAAB0DBEF7BF1A11D30665579AC6E64CF3664DAA76B813D0AB449E6837C6"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/widgets/customer_form.dart",
+      "bytes": 835,
+      "sha256": "BDB3BD8E62ADBE87D4F64E64EE02426255110495E6190245FAEE26781D7B2684"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/widgets/customer_text_field.dart",
+      "bytes": 2997,
+      "sha256": "5EF4885C5A6C0FAB668A11CC6A93D638320E8DBBACD69ACEB78DEB2E131E1D21"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/widgets/heading.dart",
+      "bytes": 1227,
+      "sha256": "6921AEFD778F8B23C7A6F5E6D7DACA73E8D6A90CF9F79538CB1108413F002D79"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/widgets/page_frame.dart",
+      "bytes": 973,
+      "sha256": "8DB6A2D17EC7DFC6E01C303BC4C4236150C85FC1C4C67B7DB516BF547B67C08C"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/widgets/password_field.dart",
+      "bytes": 2723,
+      "sha256": "5A93E088FBD97306CCA56751D0CB18F8262657A75376D88CC3B8FFDDD843D1E8"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_forms/widgets/surface.dart",
+      "bytes": 598,
+      "sha256": "7B2C055C9BCE198BC9E36F3E1D9CD1A8EB5B8E0228B8BF82000BB5913914BD27"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_screens/following_screen.dart",
+      "bytes": 1200,
+      "sha256": "1F9858485EB5C84E3C7A5902A42D6F45B2D546F9C4AADEF47DFB01D136954382"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_screens/notifications_screen.dart",
+      "bytes": 1960,
+      "sha256": "6D20BD80F0E39A7FE3577992682A0F1065D77E09510ABB74A8BE068DA6ADF79C"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_screens/pickup_screen.dart",
+      "bytes": 3398,
+      "sha256": "8790FCD44B800284456473E20F0B50F55EEAF5729EC0AD8A64A1F9732F8B43B0"
+    },
+    {
+      "path": "lib/legacy/hashir_work/customer_screens/sign_in_required.dart",
+      "bytes": 834,
+      "sha256": "1AC1C496D28DEF0E04D45E996DE73D4CA8819386F88A1DED7120D22DC85519BB"
+    },
+    {
+      "path": "lib/legacy/hashir_work/demo_catalog/data/sample_catalog.dart",
+      "bytes": 8464,
+      "sha256": "55D3436177540FC5C2092F0EF2CD46163B5AA4C5A2AEDA00153EFB04D4A32184"
+    },
+    {
+      "path": "lib/legacy/hashir_work/demo_catalog/models/farmer.dart",
+      "bytes": 254,
+      "sha256": "76AAF072BADD60E5126DC01CB93FF889BF5A111C0B4130B9BAD369EB9F1DFAC4"
+    },
+    {
+      "path": "lib/legacy/hashir_work/demo_catalog/models/product.dart",
+      "bytes": 382,
+      "sha256": "EBF704D4B21C1483E510602C367DBAF1E97B304C804FAB831BCBEB2EC0433C03"
+    },
+    {
+      "path": "lib/legacy/hashir_work/demo_catalog/widgets/produce_illustration.dart",
+      "bytes": 9424,
+      "sha256": "F59CCE8413C50C69523D57BCCCD938F301772CCE142B9BF767BB9429AB2A5502"
+    },
+    {
+      "path": "lib/legacy/hashir_work/demo_catalog/widgets/product_art.dart",
+      "bytes": 646,
+      "sha256": "1EF1EC588961BC1FEFD1B2902FCC8976124551C33CD29245065D7D3A3EDB5682"
+    },
+    {
+      "path": "functions/legacy/domain.js",
+      "bytes": 2117,
+      "sha256": "4B6406FA08BC6901650D2D2E29B290C86CAFE4254B891DAF2C9C2B319E333856"
+    },
+    {
+      "path": "functions/legacy/index.js",
+      "bytes": 14227,
+      "sha256": "050A49B92DFD9FAAD311822DD9FEC99EBA3D939A5AB5C0EBA7AC4F0628FDD65A"
+    },
+    {
+      "path": "scripts/legacy/configure-email-sender.ps1",
+      "bytes": 1546,
+      "sha256": "12BCDB93E9E1D93DEB7BA9A659154B299F0EBCD388E26F3FBE8028056BCA4C1A"
+    },
+    {
+      "path": "lib/generated/assets.dart",
+      "bytes": 4682,
+      "sha256": "686793FA8A99FD6CA7D66743EC89204C3321C94EEBC737A6AEA5E9FC697868B9"
+    },
+    {
+      "path": "lib/src/features/authentication/two_step_verification/firebase_email_verification.dart",
+      "bytes": 4359,
+      "sha256": "53EB1B06B7DA0CAF88517DDBCF7EB0763F109D4D775C5912F9EED105D18D1D72"
+    },
+    {
+      "path": "scripts/maintenance/organize_project.py",
+      "bytes": 5915,
+      "sha256": "244B415FA67DB87E525DC8E2B2A155C468B755DA9AC73EFF7585ADEAC9E474D5"
+    },
+    {
+      "path": "scripts/maintenance/organize_role_modules.py",
+      "bytes": 11223,
+      "sha256": "A7D25BC1D1002A60F706EB14AD8CF49896ABF58614CA3EA8FE1F476C7E6F54D8"
+    },
+    {
+      "path": "functions/test/domain.test.js",
+      "bytes": 1782,
+      "sha256": "1296B63E4C7C39ABD130CD40BD4817011C1EBFEB088F52DB02B184F5DB39FD3B"
+    },
+    {
+      "path": "functions/test/emulator.test.js",
+      "bytes": 8967,
+      "sha256": "4EF386A13972C50E55D464044EA07AC8E6FCD7995BFAB8B40BD3ADAC789EB3F8"
+    },
+    {
+      "path": "firebase-debug.log",
+      "bytes": 28739,
+      "sha256": "0F60F74676AAE27AAFED7ECB7A05EB0890B4513885F51B08F20D3B296A510605"
+    },
+    {
+      "path": "firestore-debug.log",
+      "bytes": 216671,
+      "sha256": "DFF08C4D761939C63C487A4363CB548657048E7EFDB714F1EF4CBE118768AE2A"
+    },
+    {
+      "path": "hs_err_pid8892.log",
+      "bytes": 51973,
+      "sha256": "8C8AF9624A9A5F87FDDF49129623932F05B4E6CDDF91C4362968C956F9E2E224"
+    },
+    {
+      "path": "replay_pid8892.log",
+      "bytes": 381946,
+      "sha256": "24AC143544E336AB0D601C0A987D174297B7EA953D5B852066B0C14E978BFDFE"
+    }
+  ],
+  "protectedFilesVerified": 210,
+  "backup": ".local-backups/removed-old-work-1.0.16.zip"
+}

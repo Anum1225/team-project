@@ -1,0 +1,18 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function canUpload(uid) {
+      let profile = firestore.get(/databases/(default)/documents/users/$(request.auth.uid)).data;
+      return request.auth.uid == uid && profile.active == true && profile.role in ['admin', 'farmer'];
+    }
+    match /productImages/{uid}/{product}/{file} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && canUpload(uid)
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType in ['image/jpeg', 'image/png'];
+      // Retain images referenced by immutable historical order snapshots.
+      allow update, delete: if false;
+    }
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}

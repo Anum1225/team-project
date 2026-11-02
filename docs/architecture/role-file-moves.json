@@ -1,0 +1,179 @@
+{
+  "moves": {
+    "lib/src/data/assistant_preferences.dart": "lib/src/features/common/data/assistant_preferences.dart",
+    "lib/src/data/firebase_store.dart": "lib/src/features/common/data/firebase_store.dart",
+    "lib/src/data/guest_store.dart": "lib/src/features/common/data/guest_store.dart",
+    "lib/src/data/models.dart": "lib/src/features/common/data/models.dart",
+    "lib/src/data/public_content.dart": "lib/src/features/common/data/public_content.dart",
+    "lib/src/data/spark_backend.dart": "lib/src/features/common/data/spark_backend.dart",
+    "lib/src/data/store.dart": "lib/src/features/common/data/store.dart",
+    "lib/src/data/trusted_backend.dart": "lib/src/features/common/data/trusted_backend.dart",
+    "lib/src/shared/animated_chart.dart": "lib/src/features/common/shared/animated_chart.dart",
+    "lib/src/shared/components.dart": "lib/src/features/common/shared/components.dart",
+    "lib/src/shared/harvest_sprout.dart": "lib/src/features/common/shared/harvest_sprout.dart",
+    "lib/src/shared/theme.dart": "lib/src/features/common/shared/theme.dart",
+    "lib/src/shared/theme_reveal.dart": "lib/src/features/common/shared/theme_reveal.dart",
+    "lib/src/shared/voice_search.dart": "lib/src/features/common/shared/voice_search.dart",
+    "lib/src/shared/forms/phone_countries.dart": "lib/src/features/common/shared/forms/phone_countries.dart",
+    "lib/src/shared/forms/phone_field.dart": "lib/src/features/common/shared/forms/phone_field.dart",
+    "lib/src/shared/forms/phone_validation.dart": "lib/src/features/common/shared/forms/phone_validation.dart",
+    "lib/src/features/location/location_picker.dart": "lib/src/features/common/location/location_picker.dart",
+    "lib/src/features/location/native_geocoder.dart": "lib/src/features/common/location/native_geocoder.dart",
+    "lib/src/features/location/place_lookup.dart": "lib/src/features/common/location/place_lookup.dart",
+    "lib/src/features/location/place_resolver.dart": "lib/src/features/common/location/place_resolver.dart",
+    "lib/src/features/notifications/live_inbox.dart": "lib/src/features/common/notifications/live_inbox.dart",
+    "lib/src/features/notifications/notifications.dart": "lib/src/features/common/notifications/notifications.dart",
+    "lib/src/features/markets/market_directory.dart": "lib/src/features/common/markets/market_directory.dart",
+    "lib/src/features/security/change_email.dart": "lib/src/features/authentication/two_step_verification/change_email.dart",
+    "lib/src/features/security/email_security.dart": "lib/src/features/authentication/two_step_verification/email_security.dart",
+    "lib/src/features/security/firebase_email_verification.dart": "lib/src/features/authentication/two_step_verification/firebase_email_verification.dart",
+    "lib/src/features/assistant/assistant.dart": "lib/src/features/customer/ai_assistant/assistant.dart",
+    "lib/src/features/assistant/gemini_assistant.dart": "lib/src/features/customer/ai_assistant/gemini_assistant.dart",
+    "lib/src/features/assistant/saved_answers.dart": "lib/src/features/customer/ai_assistant/saved_answers.dart",
+    "lib/src/features/auth/onboarding.dart": "lib/src/features/authentication/onboarding/onboarding.dart",
+    "lib/src/features/auth/guest_sign_in.dart": "lib/src/features/authentication/demo/guest_sign_in.dart",
+    "lib/src/features/orders/confirmation.dart": "lib/src/features/customer/checkout/confirmation.dart",
+    "lib/src/features/profile/about_page.dart": "lib/src/features/common/about_us/about_page.dart",
+    "lib/src/features/profile/public_content_editor.dart": "lib/src/features/admin/content/public_content_editor.dart",
+    "lib/src/features/profile/preferences.dart": "lib/src/features/common/profile/preferences.dart",
+    "lib/src/features/profile/avatars.dart": "lib/src/features/common/profile/avatars.dart",
+    "lib/src/assistant_robot.dart": "lib/src/features/customer/ai_assistant/assistant_robot.dart",
+    "lib/src/email_security.dart": "lib/src/features/authentication/email_security.dart",
+    "lib/src/features/customer/customer.dart": "lib/src/features/customer/customer.dart",
+    "lib/src/features/auth/auth.dart": "lib/src/features/authentication/authentication.dart",
+    "lib/src/features/management/operations.dart": "lib/src/features/common/management/operations.dart",
+    "lib/src/features/management/reporting.dart": "lib/src/features/common/reports/reporting.dart",
+    "lib/src/features/profile/profile.dart": "lib/src/features/common/profile/profile.dart",
+    "lib/src/features/orders/orders.dart": "lib/src/features/common/orders/orders.dart"
+  },
+  "parts": {
+    "lib/src/features/customer/customer.dart": [
+      "lib/src/features/customer/farmers/follow_action.dart",
+      "lib/src/features/customer/cart/basket_action.dart",
+      "lib/src/features/customer/home/home_screen.dart",
+      "lib/src/features/customer/search_filter/explore_screen.dart",
+      "lib/src/features/customer/product_details/product_screen.dart",
+      "lib/src/features/customer/farmers/farm_screen.dart",
+      "lib/src/features/customer/wishlist/wishlist_screen.dart",
+      "lib/src/features/customer/cart/cart_screen.dart",
+      "lib/src/features/customer/checkout/checkout_screen.dart",
+      "lib/src/features/customer/farmers/all_farms_screen.dart"
+    ],
+    "lib/src/features/auth/auth.dart": [
+      "lib/src/features/authentication/shared/password_eye.dart",
+      "lib/src/features/authentication/shared/auth_photo_panel.dart",
+      "lib/src/features/authentication/shared/sign_in_register_form.dart",
+      "lib/src/features/authentication/shared/auth_decoration.dart",
+      "lib/src/features/authentication/shared/validators.dart",
+      "lib/src/features/authentication/shared/password_strength.dart",
+      "lib/src/features/authentication/shared/harvest_field.dart",
+      "lib/src/features/authentication/password_reset/password_help_screen.dart"
+    ],
+    "lib/src/features/management/operations.dart": [
+      "lib/src/features/farmer/dashboard/dashboard_screen.dart",
+      "lib/src/features/common/products/inventory_screen.dart",
+      "lib/src/features/common/products/inventory_row.dart",
+      "lib/src/features/common/products/product_editor_screen.dart",
+      "lib/src/features/farmer/reports/reports_screen.dart",
+      "lib/src/features/admin/users/users_screen.dart",
+      "lib/src/features/admin/users/user_detail_screen.dart",
+      "lib/src/features/admin/categories/categories_screen.dart"
+    ],
+    "lib/src/features/management/reporting.dart": [
+      "lib/src/features/common/reports/report_formatting.dart",
+      "lib/src/features/admin/dashboard/admin_dashboard.dart",
+      "lib/src/features/admin/dashboard/metric_loading.dart",
+      "lib/src/features/admin/dashboard/admin_metric_card.dart",
+      "lib/src/features/common/reports/live_reports.dart",
+      "lib/src/features/common/reports/order_value_chart.dart",
+      "lib/src/features/admin/reports/admin_analytics_screen.dart",
+      "lib/src/features/admin/reviews/reviews_screen.dart",
+      "lib/src/features/admin/reports/admin_reports_screen.dart",
+      "lib/src/features/admin/settings/admin_settings_screen.dart"
+    ],
+    "lib/src/features/profile/profile.dart": [
+      "lib/src/features/common/profile/profile_screen.dart",
+      "lib/src/features/common/profile/profile_editor_screen.dart",
+      "lib/src/features/farmer/profile/farm_editor_screen.dart",
+      "lib/src/features/authentication/account_security/security_screen.dart",
+      "lib/src/features/common/contact_us/contact_screen.dart",
+      "lib/src/features/common/shared/state_gallery_screen.dart"
+    ],
+    "lib/src/features/orders/orders.dart": [
+      "lib/src/features/common/orders/order_status.dart",
+      "lib/src/features/common/orders/order_card.dart",
+      "lib/src/features/common/orders/orders_screen.dart",
+      "lib/src/features/common/orders/order_detail_screen.dart"
+    ]
+  },
+  "shared_entries": {
+    "authentication/customer_login_register/customer_auth.dart": [
+      "authentication/authentication.dart",
+      "AuthScreen"
+    ],
+    "authentication/farmer_login/farmer_login.dart": [
+      "authentication/authentication.dart",
+      "AuthScreen"
+    ],
+    "authentication/admin_login/admin_login.dart": [
+      "authentication/authentication.dart",
+      "AuthScreen"
+    ],
+    "customer/categories/categories.dart": [
+      "customer/customer.dart",
+      "ExploreScreen"
+    ],
+    "customer/orders/orders.dart": [
+      "common/orders/orders.dart",
+      "OrdersScreen, OrderDetailScreen, OrderCard"
+    ],
+    "customer/profile/profile.dart": [
+      "common/profile/profile.dart",
+      "ProfileScreen, ProfileEditorScreen"
+    ],
+    "farmer/profile/profile.dart": [
+      "common/profile/profile.dart",
+      "ProfileScreen, FarmEditorScreen"
+    ],
+    "farmer/products/products.dart": [
+      "common/management/operations.dart",
+      "InventoryScreen, InventoryRow"
+    ],
+    "farmer/add_product/add_product.dart": [
+      "common/management/operations.dart",
+      "ProductEditorScreen"
+    ],
+    "farmer/edit_delete_product/edit_delete_product.dart": [
+      "common/management/operations.dart",
+      "ProductEditorScreen, InventoryRow"
+    ],
+    "farmer/inventory/inventory.dart": [
+      "common/management/operations.dart",
+      "InventoryScreen"
+    ],
+    "farmer/orders/orders.dart": [
+      "common/orders/orders.dart",
+      "OrdersScreen, OrderDetailScreen, OrderCard"
+    ],
+    "farmer/order_status/order_status.dart": [
+      "common/orders/orders.dart",
+      "OrderDetailScreen, statusIcon"
+    ],
+    "admin/customers/customers.dart": [
+      "common/management/operations.dart",
+      "UsersScreen, UserDetailScreen"
+    ],
+    "admin/farmers/farmers.dart": [
+      "common/management/operations.dart",
+      "UsersScreen, UserDetailScreen"
+    ],
+    "admin/products/products.dart": [
+      "common/management/operations.dart",
+      "InventoryScreen, ProductEditorScreen"
+    ],
+    "admin/orders/orders.dart": [
+      "common/orders/orders.dart",
+      "OrdersScreen, OrderDetailScreen, OrderCard"
+    ]
+  }
+}

@@ -46,3 +46,20 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Firebase backend dependencies and local emulator files
+/functions/node_modules/
+.firebase/
+*-debug.log
+
+
+# Local secrets
+.local-backups/
+# Local project review documents contain owner-supplied login details.
+/docs/README.doc
+/docs/README.docx
+.env
+.env.*
+!.env.example
+*.secrets.json
+/android/build/

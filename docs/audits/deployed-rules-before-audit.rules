@@ -1,0 +1,208 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function profile() { return get(/databases/$(database)/documents/users/$(request.auth.uid)).data; }
+    function active() { return signedIn() && profile().active == true; }
+    function admin() { return active() && profile().role == 'admin'; }
+    function ownsFarm(id) { return active() && (admin() || (profile().role == 'farmer' && get(/databases/$(database)/documents/farms/$(id)).data.owner == request.auth.uid)); }
+    function shortText(v, n) { return v is string && v.size() <= n; }
+    function categoryCount(cat, delta) {
+      return getAfter(/databases/$(database)/documents/categories/$(cat)).data.productCount
+        == get(/databases/$(database)/documents/categories/$(cat)).data.productCount+delta;
+    }
+    function productCounts(before, after) {
+      return admin() || (before.categoryId==after.categoryId && before.archived==after.archived)
+        || (after.archived==true && categoryCount(before.categoryId,-1))
+        || (before.categoryId!=after.categoryId && categoryCount(before.categoryId,-1) && categoryCount(after.categoryId,1));
+    }
+    function validProduct(p) {
+      return shortText(p.name,500) && p.name.size()>0 && shortText(p.description,5000)
+        && shortText(p.unit,60) && p.unit.size()>0 && p.price is int && p.price>=0 && p.price<=1000000000
+        && p.stock is int && p.stock>=0 && p.stock<=1000000000 && p.archived is bool
+        && shortText(p.image,140000) && p.updatedAt==request.time
+        && getAfter(/databases/$(database)/documents/categories/$(p.categoryId)).data.name==p.category;
+    }
+    function stockPurchase(productId) {
+      let before=resource.data;
+      let after=request.resource.data;
+      let order=getAfter(/databases/$(database)/documents/orders/$(after.lastOrderId)).data;
+      return active() && profile().role=='customer' && before.archived==false
+        && after.diff(before).affectedKeys().hasOnly(['stock','lastOrderId','updatedAt'])
+        && after.updatedAt==request.time && after.stock>=0
+        && !exists(/databases/$(database)/documents/orders/$(after.lastOrderId))
+        && order.customerId==request.auth.uid && order.items.size()==1
+        && order.items[0].productId==productId && order.items[0].quantity is int
+        && order.items[0].quantity>0 && after.stock==before.stock-order.items[0].quantity;
+    }
+    function validOrder(id,o) {
+      let line=o.items[0];
+      let p=get(/databases/$(database)/documents/products/$(line.productId)).data;
+      let after=getAfter(/databases/$(database)/documents/products/$(line.productId)).data;
+      let farm=get(/databases/$(database)/documents/farms/$(p.farmId)).data;
+      // phone/note/paymentMethod: optional checkout-form fields (Cash on Delivery only).
+      return o.keys().hasOnly(['customerId','customerName','farmId','farmerId','farmName','market','items','total','address','phone','note','paymentMethod','status','createdAt'])
+        && shortText(o.get('phone',''),40) && shortText(o.get('note',''),1000)
+        && o.get('paymentMethod','cashOnDelivery')=='cashOnDelivery'
+        && o.customerId==request.auth.uid && o.customerName==profile().name
+        && o.status=='pending' && o.createdAt==request.time && shortText(o.address,500) && o.address.size()>0
+        && o.items is list && o.items.size()==1
+        && line.keys().hasOnly(['productId','name','image','unit','price','quantity'])
+        && line.name==p.name && line.image==p.image && line.unit==p.unit && line.price==p.price
+        && line.quantity is int && line.quantity>0 && line.quantity<=p.stock
+        && o.total==p.price*line.quantity && p.archived==false && farm.active==true
+        && o.farmId==p.farmId && o.farmerId==farm.owner && o.farmName==farm.name && o.market==farm.market
+        && after.stock==p.stock-line.quantity && after.lastOrderId==id;
+    }
+    match /users/{uid} {
+      allow read: if signedIn() && (request.auth.uid == uid || admin());
+      allow create: if admin() || (signedIn() && request.auth.uid == uid
+        && request.resource.data.keys().hasAll(['name','email','role','phone','address','active','createdAt'])
+        && request.resource.data.keys().hasOnly(['name','email','role','phone','address','active','createdAt'])
+        && request.resource.data.role in ['customer','farmer']
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.active == true
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.name is string && request.resource.data.name.size() > 0 && request.resource.data.name.size() <= 500
+        && request.resource.data.phone is string && request.resource.data.phone.size() <= 500
+        && request.resource.data.address is string && request.resource.data.address.size() <= 500
+        && (request.resource.data.role == 'customer' ||
+          getAfter(/databases/$(database)/documents/farms/$(uid)).data.owner == uid));
+      allow update: if admin() || (active() && request.auth.uid==uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','phone','address','active','updatedAt'])
+        && shortText(request.resource.data.name,500) && request.resource.data.name.size()>0
+        && shortText(request.resource.data.phone,500) && shortText(request.resource.data.address,500)
+        && request.resource.data.updatedAt==request.time && request.resource.data.active is bool
+        && (request.resource.data.active==resource.data.active || (admin() && uid!=request.auth.uid && resource.data.role!='admin')));
+      allow delete: if admin();
+      // FCM device tokens for push notifications.
+      match /devices/{token} {
+        allow read, delete: if signedIn() && request.auth.uid == uid;
+        allow create, update: if active() && request.auth.uid == uid
+          && request.resource.data.keys().hasOnly(['platform','updatedAt'])
+          && shortText(request.resource.data.platform,40)
+          && request.resource.data.updatedAt == request.time;
+      }
+      match /private/preferences {
+        allow read: if active() && request.auth.uid == uid;
+        allow create, update: if active() && request.auth.uid == uid && profile().role == 'customer'
+          && request.resource.data.keys().hasOnly(['saved','followed','readNotices'])
+          && request.resource.data.get('saved',[]) is list && request.resource.data.get('saved',[]).size() <= 1000
+          && request.resource.data.get('followed',[]) is list && request.resource.data.get('followed',[]).size() <= 1000
+          && request.resource.data.get('readNotices',[]) is list && request.resource.data.get('readNotices',[]).size() <= 1000;
+      }
+      match /pickups/{orderId} {
+        allow read: if active() && request.auth.uid == uid;
+        allow create, update: if active() && request.auth.uid == uid && profile().role == 'customer'
+          && get(/databases/$(database)/documents/orders/$(orderId)).data.customerId == uid
+          && get(/databases/$(database)/documents/orders/$(orderId)).data.status in ['pending','confirmed','ready']
+          && request.resource.data.keys().hasOnly(['slot','updatedAt'])
+          && (request.resource.data.slot == null || (request.resource.data.slot is string && request.resource.data.slot.size() > 0 && request.resource.data.slot.size() <= 160
+            && request.resource.data.slot in get(/databases/$(database)/documents/farms/$(get(/databases/$(database)/documents/orders/$(orderId)).data.farmId)).data.get('pickupSlots', [])))
+          && request.resource.data.updatedAt == request.time;
+      }
+
+    }
+    match /farms/{id} {
+      allow read: if active();
+      allow create: if admin() || (signedIn() && request.auth.uid == id
+        && !exists(/databases/$(database)/documents/users/$(id))
+        && getAfter(/databases/$(database)/documents/users/$(id)).data.role == 'farmer'
+        && request.resource.data.keys().hasAll(['name','owner','location','market','description','image','active','createdAt'])
+        && request.resource.data.keys().hasOnly(['name','owner','location','market','description','image','active','createdAt'])
+        && request.resource.data.owner == id
+        && request.resource.data.name == getAfter(/databases/$(database)/documents/users/$(id)).data.name
+        && request.resource.data.active == true && request.resource.data.createdAt == request.time
+        && request.resource.data.location == '' && request.resource.data.market == ''
+        && request.resource.data.description == '' && request.resource.data.image == '');
+      // lat/lng (distance filter) and pickupSlots (pickup availability) added for farmers.
+      allow update: if admin() || (ownsFarm(id)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name','location','market','description','active','lat','lng','pickupSlots','updatedAt'])
+        && shortText(request.resource.data.name,500) && request.resource.data.name.size()>0
+        && shortText(request.resource.data.location,500) && shortText(request.resource.data.market,500)
+        && shortText(request.resource.data.description,5000) && request.resource.data.updatedAt==request.time
+        && (request.resource.data.get('lat', null) == null || (request.resource.data.lat is number && request.resource.data.lat >= -90 && request.resource.data.lat <= 90))
+        && (request.resource.data.get('lng', null) == null || (request.resource.data.lng is number && request.resource.data.lng >= -180 && request.resource.data.lng <= 180))
+        && request.resource.data.get('pickupSlots', []) is list && request.resource.data.get('pickupSlots', []).size() <= 20
+        && (request.resource.data.active==resource.data.active || admin()));
+      allow delete: if admin();
+    }
+    match /products/{id} {
+      allow get: if active();
+      allow list: if active() && (resource.data.archived==false || admin());
+      allow create: if admin() || (ownsFarm(request.resource.data.farmId) && validProduct(request.resource.data)
+        && request.resource.data.createdAt==request.time && request.resource.data.archived==false
+        && categoryCount(request.resource.data.categoryId,1)
+        && getAfter(/databases/$(database)/documents/categories/$(request.resource.data.categoryId)).data.lastProductId==id);
+      allow update: if admin() || stockPurchase(id) || (ownsFarm(resource.data.farmId)
+        && (admin() || request.resource.data.farmId==resource.data.farmId)
+        && request.resource.data.createdAt==resource.data.createdAt
+        && productCounts(resource.data,request.resource.data)
+        && ((request.resource.data.archived==true && request.resource.data.stock==0
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['archived','stock','updatedAt'])
+          && request.resource.data.updatedAt==request.time)
+          || (resource.data.archived==false && validProduct(request.resource.data))));
+      allow delete: if admin();
+    }
+    match /categories/{id} {
+      allow read: if active();
+      allow create: if admin() && shortText(request.resource.data.name,100) && request.resource.data.name.size()>0
+        && request.resource.data.productCount is int && request.resource.data.productCount>=0;
+      allow update: if (admin() && request.resource.data.productCount is int && request.resource.data.productCount>=0)
+        || (active() && profile().role=='farmer'
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['productCount','lastProductId'])
+          && validCount(id));
+      function membership(p, cat) { return p.get('archived',true)==false && p.get('categoryId','')==cat ? 1 : 0; }
+      function validCount(cat) {
+        let id=request.resource.data.lastProductId;
+        let path=/databases/$(database)/documents/products/$(id);
+        let before=exists(path) ? get(path).data : {};
+        let after=getAfter(path).data;
+        return ownsFarm(after.farmId)
+          && request.resource.data.productCount==resource.data.productCount+membership(after,cat)-membership(before,cat)
+          && request.resource.data.productCount>=0;
+      }
+      allow delete: if admin();
+    }
+    match /orders/{id} {
+      allow read: if active() && (admin() || resource.data.customerId == request.auth.uid ||
+        (profile().role == 'farmer' && resource.data.farmerId == request.auth.uid));
+      allow create: if admin() || (active() && profile().role=='customer' && validOrder(id,request.resource.data));
+      allow update: if admin() || (ownsFarm(resource.data.farmId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status','updatedAt'])
+        && request.resource.data.updatedAt==request.time
+        && resource.data.status in ['pending','confirmed','ready']
+        && (request.resource.data.status=='cancelled'
+          || (resource.data.status=='pending' && request.resource.data.status=='confirmed')
+          || (resource.data.status=='confirmed' && request.resource.data.status=='ready')
+          || (resource.data.status=='ready' && request.resource.data.status=='completed')));
+      allow delete: if admin();
+    }
+    match /checkoutRequests/{id} {
+      allow get: if active() && id.matches(request.auth.uid+'_.*');
+      allow create: if active() && profile().role=='customer' && id.matches(request.auth.uid+'_.*')
+        && request.resource.data.keys().hasOnly(['userId','orderIds','createdAt'])
+        && request.resource.data.userId==request.auth.uid && request.resource.data.createdAt==request.time
+        && request.resource.data.orderIds is list && request.resource.data.orderIds.size()<=3;
+    }
+    // Public administrator contact details shown on Contact Us.
+    match /appConfig/{id} { allow read: if true; allow write: if admin(); }
+    match /adminActivityLogs/{id} {
+      allow read: if admin();
+      allow create: if admin() && request.resource.data.adminId==request.auth.uid && request.resource.data.createdAt==request.time;
+    }
+    match /feedback/{id} {
+      allow read: if admin();
+      allow create: if active() && request.resource.data.keys().hasOnly(['userId','email','message','createdAt','read'])
+        && request.resource.data.userId==request.auth.uid && shortText(request.resource.data.email,500)
+        && shortText(request.resource.data.message,5000) && request.resource.data.message.size()>0
+        && request.resource.data.createdAt==request.time && request.resource.data.read==false;
+    }
+    match /farmersMarkets/{id} {
+      allow read: if active();
+      allow write: if admin();
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}
+
